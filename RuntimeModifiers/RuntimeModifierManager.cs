@@ -16,6 +16,7 @@ namespace CreaturePrefabCreator.RuntimeModifiers
         public int ValidRules;
         public int InvalidRules;
         public int RuntimeAIDisabledCount;
+        public int RuntimeAIEnabledCount;
         public List<string> RuleCachePrefabs;
         public bool MountUpDetected;
         public bool MountUpTypeResolved;
@@ -41,6 +42,7 @@ namespace CreaturePrefabCreator.RuntimeModifiers
         public float? EffectDamage;
         public float? EffectSpeed;
         public bool? EffectDisableAI;
+        public bool? EffectEnableAI;
     }
 
     public sealed class RuntimeConditionTrace
@@ -67,6 +69,9 @@ namespace CreaturePrefabCreator.RuntimeModifiers
         public bool RuntimeAIDisabledByCpc;
         public string DisableReason;
         public float DisabledAt;
+        public bool RuntimeAIEnabledByCpc;
+        public string EnableReason;
+        public float EnabledAt;
         public bool OriginalBaseAIEnabled;
         public bool OriginalMonsterAIEnabled;
         public bool OriginalAnimalAIEnabled;
@@ -85,6 +90,7 @@ namespace CreaturePrefabCreator.RuntimeModifiers
         public bool ConditionsPass;
         public List<RuntimeConditionTrace> Conditions;
         public bool? EffectDisableAI;
+        public bool? EffectEnableAI;
         public float? EffectHealth;
         public float? EffectDamage;
         public float? EffectSpeed;
@@ -120,6 +126,7 @@ namespace CreaturePrefabCreator.RuntimeModifiers
         private static readonly Dictionary<ZDOID, SpeedSnapshot> _originalSpeeds = new Dictionary<ZDOID, SpeedSnapshot>();
         private static readonly Dictionary<ZDOID, float> _currentDamageMult = new Dictionary<ZDOID, float>();
         private static readonly Dictionary<ZDOID, RuntimeAIState> _runtimeAIDisabled = new Dictionary<ZDOID, RuntimeAIState>();
+        private static readonly Dictionary<ZDOID, RuntimeAIState> _runtimeAIEnabled = new Dictionary<ZDOID, RuntimeAIState>();
 
         /// <summary>
         /// Checks if we have permission to modify this creature (network safety).
@@ -347,6 +354,7 @@ namespace CreaturePrefabCreator.RuntimeModifiers
             bool anyDamageRule = false;
             bool anySpeedRule = false;
             bool anyDisableAIRule = false;
+            bool anyEnableAIRule = false;
 
             foreach (var rule in matchingRules)
             {
@@ -368,6 +376,7 @@ namespace CreaturePrefabCreator.RuntimeModifiers
                 if (d != 1f) { combinedDamage *= d; anyDamageRule = true; }
                 if (s != 1f) { combinedSpeed *= s; anySpeedRule = true; }
                 if (rule.Effects.DisableAI == true) { anyDisableAIRule = true; }
+                if (rule.Effects.EnableAI == true) { anyEnableAIRule = true; }
             }
 
             ZDOID key = GetCreatureKey(character);
@@ -445,6 +454,62 @@ namespace CreaturePrefabCreator.RuntimeModifiers
                 }
                 CreaturePrefabCreatorPlugin.Instance?.Log(
                     $"[RuntimeModifier] '{character.gameObject.name}' (key={key}): skipped because PermanentAIDisabledMarker is present");
+            }
+
+            // ── Runtime AI enable logic ──────────────────────────────────────
+            // enableAI effect is for creatures with PermanentAIDisabledMarker only.
+            // It temporarily enables AI when conditions are met (e.g., ridden=true).
+            // When conditions fail, AI is restored to disabled state.
+            // Conflict rule: disableAI wins over enableAI (safer behavior).
+            bool currentlyEnabled = _runtimeAIEnabled.ContainsKey(key);
+
+            if (hasPermanentMarker && anyEnableAIRule && !anyDisableAIRule)
+            {
+                bool wantsEnableAI = anyEnableAIRule;
+
+                if (wantsEnableAI && !currentlyEnabled)
+                {
+                    // Capture AI state before enabling (should be disabled)
+                    var state = CaptureAIState(character, "runtime rule: enableAI condition met");
+                    if (state != null)
+                    {
+                        _runtimeAIEnabled[key] = state;
+                        SaddledCreaturePatch.EnableAIComponents(character);
+                        CreaturePrefabCreatorPlugin.Instance?.Log(
+                            $"[RuntimeModifier] '{character.gameObject.name}' (key={key}): enableAI condition met -> enabling AI (creature has PermanentAIDisabledMarker)");
+                        RuntimeModifierEventBuffer.Record("AIEnabled", prefabName, key, "enableAI condition met, creature had PermanentAIDisabledMarker");
+                    }
+                }
+                else if (!wantsEnableAI && currentlyEnabled)
+                {
+                    // Restore AI to disabled state
+                    if (_runtimeAIEnabled.TryGetValue(key, out var state))
+                    {
+                        RestoreAIState(character, state);
+                        _runtimeAIEnabled.Remove(key);
+                    }
+                    else
+                    {
+                        // Fallback if state is missing - disable AI to be safe
+                        SaddledCreaturePatch.DisableAIComponents(character);
+                    }
+
+                    CreaturePrefabCreatorPlugin.Instance?.Log(
+                        $"[RuntimeModifier] '{character.gameObject.name}' (key={key}): enableAI condition no longer met -> restoring AI to disabled");
+                    RuntimeModifierEventBuffer.Record("AIDisabled", prefabName, key, "enableAI condition ended, restored to disabled");
+                }
+            }
+            else if (currentlyEnabled && (!hasPermanentMarker || anyDisableAIRule))
+            {
+                // Safety: clean up if marker removed or disableAI takes precedence
+                if (_runtimeAIEnabled.TryGetValue(key, out var state))
+                {
+                    RestoreAIState(character, state);
+                    _runtimeAIEnabled.Remove(key);
+                }
+                string reason = !hasPermanentMarker ? "PermanentAIDisabledMarker removed" : "disableAI takes precedence over enableAI";
+                CreaturePrefabCreatorPlugin.Instance?.Log(
+                    $"[RuntimeModifier] '{character.gameObject.name}' (key={key}): enableAI cleanup -> {reason}");
             }
         }
 
@@ -599,6 +664,24 @@ namespace CreaturePrefabCreator.RuntimeModifiers
             return false;
         }
 
+        /// <summary>
+        /// Returns true if CPC currently has a runtime AI-enabled entry for this creature
+        /// (meaning AI was temporarily enabled via enableAI effect).
+        /// Outputs the reason string recorded when the state was captured.
+        /// </summary>
+        public static bool IsRuntimeAIEnabled(Character character, out string reason)
+        {
+            reason = null;
+            if (character == null) return false;
+            ZDOID key = GetCreatureKey(character);
+            if (_runtimeAIEnabled.TryGetValue(key, out var state))
+            {
+                reason = state.Reason;
+                return true;
+            }
+            return false;
+        }
+
         public static float GetOutgoingDamageMultiplier(Character attacker)
         {
             if (attacker == null) return 1f;
@@ -611,12 +694,20 @@ namespace CreaturePrefabCreator.RuntimeModifiers
             if (character == null) return;
             ZDOID key = GetCreatureKey(character);
             
-            // Restore AI state before cleanup
-            if (_runtimeAIDisabled.TryGetValue(key, out var state))
+            // Restore AI state before cleanup (disableAI tracking)
+            if (_runtimeAIDisabled.TryGetValue(key, out var disabledState))
             {
-                RestoreAIState(character, state);
+                RestoreAIState(character, disabledState);
                 _runtimeAIDisabled.Remove(key);
-                RuntimeModifierEventBuffer.Record("AIRestored", state.PrefabName, key, "creature destroyed/cleanup");
+                RuntimeModifierEventBuffer.Record("AIRestored", disabledState.PrefabName, key, "creature destroyed/cleanup");
+            }
+
+            // Restore AI state before cleanup (enableAI tracking)
+            if (_runtimeAIEnabled.TryGetValue(key, out var enabledState))
+            {
+                RestoreAIState(character, enabledState);
+                _runtimeAIEnabled.Remove(key);
+                RuntimeModifierEventBuffer.Record("AIDisabled", enabledState.PrefabName, key, "creature destroyed/cleanup - enableAI state restored to disabled");
             }
             
             _originalHealth.Remove(key);
@@ -628,18 +719,19 @@ namespace CreaturePrefabCreator.RuntimeModifiers
         {
             // CRITICAL: Restore all AI states before clearing.
             // Build a single ZDOID->Character map to avoid O(n*m) FindObjectsByType inside loop.
+            var allCharacters = UnityEngine.Object.FindObjectsByType<Character>(FindObjectsSortMode.None);
+            var zdoidToChar = new Dictionary<ZDOID, Character>(allCharacters.Length);
+            foreach (var ch in allCharacters)
+            {
+                if (ch == null) continue;
+                var nview = ch.GetComponent<ZNetView>();
+                if (nview != null && nview.GetZDO() != null)
+                    zdoidToChar[nview.GetZDO().m_uid] = ch;
+            }
+
+            // Restore disableAI states
             if (_runtimeAIDisabled.Count > 0)
             {
-                var allCharacters = UnityEngine.Object.FindObjectsByType<Character>(FindObjectsSortMode.None);
-                var zdoidToChar = new Dictionary<ZDOID, Character>(allCharacters.Length);
-                foreach (var ch in allCharacters)
-                {
-                    if (ch == null) continue;
-                    var nview = ch.GetComponent<ZNetView>();
-                    if (nview != null && nview.GetZDO() != null)
-                        zdoidToChar[nview.GetZDO().m_uid] = ch;
-                }
-
                 int restored = 0;
                 foreach (var kvp in _runtimeAIDisabled)
                 {
@@ -651,7 +743,24 @@ namespace CreaturePrefabCreator.RuntimeModifiers
                 }
 
                 if (restored > 0)
-                    CreaturePrefabCreatorPlugin.Instance?.Log($"[RuntimeModifier] Cleanup restored {restored} runtime AI state(s).");
+                    CreaturePrefabCreatorPlugin.Instance?.Log($"[RuntimeModifier] Cleanup restored {restored} runtime AI-disabled state(s).");
+            }
+
+            // Restore enableAI states (restore to disabled)
+            if (_runtimeAIEnabled.Count > 0)
+            {
+                int restored = 0;
+                foreach (var kvp in _runtimeAIEnabled)
+                {
+                    if (zdoidToChar.TryGetValue(kvp.Key, out var character))
+                    {
+                        RestoreAIState(character, kvp.Value);
+                        restored++;
+                    }
+                }
+
+                if (restored > 0)
+                    CreaturePrefabCreatorPlugin.Instance?.Log($"[RuntimeModifier] Cleanup restored {restored} runtime AI-enabled state(s) to disabled.");
             }
 
             RuntimeModifierEventBuffer.Record("ConfigReloaded", null, null, "ClearAll called — all runtime states cleared");
@@ -660,6 +769,7 @@ namespace CreaturePrefabCreator.RuntimeModifiers
             _originalSpeeds.Clear();
             _currentDamageMult.Clear();
             _runtimeAIDisabled.Clear();
+            _runtimeAIEnabled.Clear();
             _rules.Clear();
             
             // Clear skip log tracking to prevent stale entries
@@ -702,6 +812,7 @@ namespace CreaturePrefabCreator.RuntimeModifiers
                 ValidRules = valid,
                 InvalidRules = invalid,
                 RuntimeAIDisabledCount = _runtimeAIDisabled.Count,
+                RuntimeAIEnabledCount = _runtimeAIEnabled.Count,
                 RuleCachePrefabs = new List<string>(prefabs),
                 MountUpDetected = SaddledCreaturePatch.MountUpDetected,
                 MountUpTypeResolved = SaddledCreaturePatch.MountUpTypeResolved,
@@ -741,6 +852,7 @@ namespace CreaturePrefabCreator.RuntimeModifiers
                     info.EffectDamage = r.Effects.DamageMultiplier;
                     info.EffectSpeed = r.Effects.MovementSpeedMultiplier;
                     info.EffectDisableAI = r.Effects.DisableAI;
+                    info.EffectEnableAI = r.Effects.EnableAI;
                 }
                 list.Add(info);
             }
@@ -774,6 +886,7 @@ namespace CreaturePrefabCreator.RuntimeModifiers
                     RuleIndex = _rules.IndexOf(rule),
                     Conditions = new List<RuntimeConditionTrace>(),
                     EffectDisableAI = rule.Effects?.DisableAI,
+                    EffectEnableAI = rule.Effects?.EnableAI,
                     EffectHealth = rule.Effects?.HealthMultiplier,
                     EffectDamage = rule.Effects?.DamageMultiplier,
                     EffectSpeed = rule.Effects?.MovementSpeedMultiplier
@@ -815,7 +928,8 @@ namespace CreaturePrefabCreator.RuntimeModifiers
                 ruleDetails.Add(detail);
             }
 
-            bool cpcDisabled = _runtimeAIDisabled.TryGetValue(zdoid, out var aiState);
+            bool cpcDisabled = _runtimeAIDisabled.TryGetValue(zdoid, out var aiDisabledState);
+            bool cpcEnabled = _runtimeAIEnabled.TryGetValue(zdoid, out var aiEnabledState);
             var baseAI = character.GetComponent<BaseAI>();
             var monsterAI = character.GetComponent<MonsterAI>();
             var animalAI = character.GetComponent<AnimalAI>();
@@ -833,11 +947,14 @@ namespace CreaturePrefabCreator.RuntimeModifiers
                 MatchingRuleCount = matchingRules.Count,
                 RuleDetails = ruleDetails,
                 RuntimeAIDisabledByCpc = cpcDisabled,
-                DisableReason = aiState?.Reason,
-                DisabledAt = aiState?.DisabledAt ?? 0f,
-                OriginalBaseAIEnabled = aiState?.BaseAIWasEnabled ?? false,
-                OriginalMonsterAIEnabled = aiState?.MonsterAIWasEnabled ?? false,
-                OriginalAnimalAIEnabled = aiState?.AnimalAIWasEnabled ?? false,
+                DisableReason = aiDisabledState?.Reason,
+                DisabledAt = aiDisabledState?.DisabledAt ?? 0f,
+                RuntimeAIEnabledByCpc = cpcEnabled,
+                EnableReason = aiEnabledState?.Reason,
+                EnabledAt = aiEnabledState?.DisabledAt ?? 0f,
+                OriginalBaseAIEnabled = (aiDisabledState?.BaseAIWasEnabled ?? false) || (aiEnabledState?.BaseAIWasEnabled ?? false),
+                OriginalMonsterAIEnabled = (aiDisabledState?.MonsterAIWasEnabled ?? false) || (aiEnabledState?.MonsterAIWasEnabled ?? false),
+                OriginalAnimalAIEnabled = (aiDisabledState?.AnimalAIWasEnabled ?? false) || (aiEnabledState?.AnimalAIWasEnabled ?? false),
                 BaseAIExists = baseAI != null,
                 BaseAIEnabled = baseAI?.enabled ?? false,
                 MonsterAIExists = monsterAI != null,

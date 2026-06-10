@@ -7,91 +7,14 @@ using UnityEngine;
 namespace CreaturePrefabCreator.Patches
 {
     /// <summary>
-    /// P2: RIDING-ONLY AI ENABLE
-    ///
-    /// Inverts the old suppression behavior:
-    /// - Creatures with disableAI=true (decorative/statue): normally have AI off
-    /// - Actively ridden: temporarily ENABLE AI so the creature "comes alive"
-    /// - On dismount: restore AI to disabled state
-    ///
-    /// Only affects creatures whose prefab was created with disableAI=true.
-    /// Normal creatures (AI enabled) are completely unaffected.
-    /// </summary>
-
-    /// <summary>
-    /// Marker attached to prefabs whose config sets disableAI=true.
-    /// Used at runtime to identify which creatures should gain AI while ridden.
-    /// Also runs the periodic mount check via its own Update loop.
+    /// Marker attached to prefabs created with disableAI=true.
+    /// Used by runtimeModifiers to identify which creatures had AI disabled by CPC.
     /// </summary>
     public class PermanentAIDisabledMarker : MonoBehaviour
     {
-        private float _lastCheckTime;
-        private const float CheckInterval = 0.5f;
-
-        // State tracking to only log on changes, not every check
-        private bool? _lastRiddenState;
-
-        void Update()
-        {
-            var plugin = CreaturePrefabCreatorPlugin.Instance;
-            if (plugin == null) return;
-            if (plugin.ConfigEnableRidingAISuppression?.Value != true) return;
-
-            float now = Time.time;
-            if (now - _lastCheckTime < CheckInterval) return;
-            _lastCheckTime = now;
-
-            var character = GetComponent<Character>();
-            if (character == null) return;
-
-            // CRITICAL: Only modify AI if we are the network owner
-            if (!SaddledCreaturePatch.CanModifyCreature(character))
-            {
-                if (plugin.ConfigDebugAIState?.Value == true)
-                    plugin.Log($"[PermanentAIDisabledMarker] {character.name}: skipped - not owner or no ZNetView");
-                return;
-            }
-
-            try
-            {
-                bool isRidden = SaddledCreaturePatch.IsActivelyRidden(character);
-                var marker = character.GetComponent<RidingAITempEnabledMarker>();
-
-                // Track state changes to reduce log spam - only log on transitions
-                bool stateChanged = _lastRiddenState == null || _lastRiddenState != isRidden;
-                _lastRiddenState = isRidden;
-
-                if (isRidden && marker == null)
-                {
-                    SaddledCreaturePatch.EnableAIComponents(character);
-                    SaddledCreaturePatch.MarkAIEnabled(character);
-
-                    if (plugin.ConfigDebugAIState?.Value == true && stateChanged)
-                        plugin.Log($"[PermanentAIDisabledMarker] {character.name}: >>> ENABLING AI (actively ridden, disableAI=true) <<<");
-                }
-                else if (!isRidden && marker != null)
-                {
-                    SaddledCreaturePatch.DisableAIComponents(character);
-                    UnityEngine.Object.Destroy(marker);
-
-                    if (plugin.ConfigDebugAIState?.Value == true && stateChanged)
-                        plugin.Log($"[PermanentAIDisabledMarker] {character.name}: dismounted - disabling AI, restored to config state");
-                }
-            }
-            catch (Exception ex)
-            {
-                plugin?.LogWarning($"[PermanentAIDisabledMarker] {character?.name}: ERROR - {ex.Message}");
-            }
-        }
-    }
-
-    /// <summary>
-    /// Marker component attached to creatures whose AI was temporarily enabled by this plugin.
-    /// Tracks that we own the enable and should restore on dismount.
-    /// </summary>
-    public class RidingAITempEnabledMarker : MonoBehaviour
-    {
-        public float EnabledTime;
+        // This is a marker component only - no behavior needed.
+        // RuntimeModifiers checks for this component to identify creatures
+        // that were created with disableAI=true.
     }
 
     public static class SaddledCreaturePatch
@@ -137,7 +60,7 @@ namespace CreaturePrefabCreator.Patches
         }
 
         /// <summary>
-        /// Initializes cached reflection. Call once from plugin Awake (gated by EnableRidingAISuppression).
+        /// Initializes cached reflection. Call once from plugin Awake (gated by EnableRuntimeModifiers).
         /// </summary>
         public static void Initialize()
         {
@@ -407,7 +330,7 @@ namespace CreaturePrefabCreator.Patches
                     }
                 }
 
-                // 5. MountUpRestored diagnostic only (not authoritative)
+                // 5. MountUpRestored: check via Mountable -> getSaddle/getSadle -> Sadle.GetRider()
                 if (_mountUpMountableType != null && _mountUpGetSaddleMethod != null && _sadleGetRiderMethod != null)
                 {
                     var mountable = character.GetComponent(_mountUpMountableType);
@@ -422,8 +345,8 @@ namespace CreaturePrefabCreator.Patches
                                 var rider = _sadleGetRiderMethod.Invoke(sadle, null);
                                 if (rider != null)
                                 {
-                                    if (debug) CreaturePrefabCreatorPlugin.Instance?.Log($"[IsActivelyRidden] {character.name}: MountUp diagnostic has rider (via {_mountUpGetSaddleMethodName} -> Sadle.GetRider)");
-                                    // Note: This is diagnostic only, not authoritative
+                                    if (debug) CreaturePrefabCreatorPlugin.Instance?.Log($"[IsActivelyRidden] {character.name}: true (MountUp via {_mountUpGetSaddleMethodName} -> Sadle.GetRider)");
+                                    return true;
                                 }
                             }
                         }
@@ -498,8 +421,8 @@ namespace CreaturePrefabCreator.Patches
         }
 
         /// <summary>
-        /// P2: Check if this creature was configured with disableAI=true at prefab creation.
-        /// Uses the PermanentAIDisabledMarker component instead of broken ZDO flag.
+        /// Check if this creature was configured with disableAI=true at prefab creation.
+        /// Uses the PermanentAIDisabledMarker component to identify CPC-disabled creatures.
         /// </summary>
         internal static bool HasPermanentAIDisable(Character character)
         {
@@ -507,46 +430,7 @@ namespace CreaturePrefabCreator.Patches
         }
 
         /// <summary>
-        /// P2: Mark that we have temporarily enabled AI for riding.
-        /// </summary>
-        internal static void MarkAIEnabled(Character character)
-        {
-            if (character == null) return;
-
-            var marker = character.GetComponent<RidingAITempEnabledMarker>();
-            if (marker == null)
-            {
-                marker = character.gameObject.AddComponent<RidingAITempEnabledMarker>();
-            }
-            marker.EnabledTime = Time.time;
-
-            var plugin = CreaturePrefabCreatorPlugin.Instance;
-            if (plugin?.ConfigDebugAIState?.Value == true)
-                plugin.Log($"[MarkAIEnabled] {character.name}: marked for AI disable on dismount");
-        }
-
-        /// <summary>
-        /// P2: Check if we previously enabled AI and disable it if the creature is no longer ridden.
-        /// </summary>
-        internal static void CheckAndDisableAI(Character character)
-        {
-            if (character == null) return;
-
-            var marker = character.GetComponent<RidingAITempEnabledMarker>();
-            if (marker == null) return; // We never enabled this creature
-
-            if (!IsActivelyRidden(character))
-            {
-                UnityEngine.Object.Destroy(marker);
-
-                var plugin = CreaturePrefabCreatorPlugin.Instance;
-                if (plugin?.ConfigDebugMountState?.Value == true)
-                    plugin.Log($"[CheckAndDisableAI] {character.name}: dismounted - removing enable marker, AI will be restored to disabled");
-            }
-        }
-
-        /// <summary>
-        /// P2: Enable AI components on this creature.
+        /// Enable AI components on this creature.
         /// CRITICAL: Only modifies AI if we are the network owner.
         /// </summary>
         internal static void EnableAIComponents(Character character)

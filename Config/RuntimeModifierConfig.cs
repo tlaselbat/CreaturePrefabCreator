@@ -62,6 +62,9 @@ namespace CreaturePrefabCreator.Config
         [DataMember(Name = "disableAI", IsRequired = false)]
         public bool? DisableAI { get; set; } = null;
 
-        public bool IsEmpty => HealthMultiplier == null && DamageMultiplier == null && MovementSpeedMultiplier == null && DisableAI == null;
+        [DataMember(Name = "enableAI", IsRequired = false)]
+        public bool? EnableAI { get; set; } = null;
+
+        public bool IsEmpty => HealthMultiplier == null && DamageMultiplier == null && MovementSpeedMultiplier == null && DisableAI == null && EnableAI == null;
     }
 }

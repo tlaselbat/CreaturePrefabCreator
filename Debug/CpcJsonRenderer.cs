@@ -98,6 +98,7 @@ namespace CreaturePrefabCreator.Debug
                 w.Field("hasTameable", e.HasTameable);
                 w.Field("hasOffspringGrowup", e.HasOffspringGrowup);
                 w.Field("runtimeAIDisabled", e.RuntimeAIDisabled);
+                w.Field("runtimeAIEnabled", e.RuntimeAIEnabled);
                 w.EndObject();
             }
             w.EndArray();
@@ -235,6 +236,8 @@ namespace CreaturePrefabCreator.Debug
             w.Field("permanentAIDisabled", ai.PermanentAIDisabled);
             w.Field("runtimeAIDisabledByCpc", ai.RuntimeAIDisabledByCpc);
             w.Field("runtimeDisableReason", ai.RuntimeDisableReason);
+            w.Field("runtimeAIEnabledByCpc", ai.RuntimeAIEnabledByCpc);
+            w.Field("runtimeEnableReason", ai.RuntimeEnableReason);
             w.Field("movementBlockerSummary", ai.MovementBlockerSummary);
             w.Field("viewRange", ai.ViewRange);
             w.Field("viewAngle", ai.ViewAngle);
@@ -259,6 +262,8 @@ namespace CreaturePrefabCreator.Debug
             w.Field("matchingRuleCount", rt.MatchingRuleCount);
             w.Field("runtimeAIDisabledByCpc", rt.RuntimeAIDisabledByCpc);
             w.Field("disableReason", rt.DisableReason);
+            w.Field("runtimeAIEnabledByCpc", rt.RuntimeAIEnabledByCpc);
+            w.Field("enableReason", rt.EnableReason);
             w.Field("originalBaseAIEnabled", rt.OriginalBaseAIEnabled);
             w.Field("originalMonsterAIEnabled", rt.OriginalMonsterAIEnabled);
             w.Field("originalAnimalAIEnabled", rt.OriginalAnimalAIEnabled);
@@ -283,6 +288,7 @@ namespace CreaturePrefabCreator.Debug
                 }
                 w.EndArray();
                 w.FieldNullableBool("effectDisableAI", d.EffectDisableAI);
+                w.FieldNullableBool("effectEnableAI", d.EffectEnableAI);
                 w.FieldNullableFloat("effectHealth", d.EffectHealth);
                 w.FieldNullableFloat("effectDamage", d.EffectDamage);
                 w.FieldNullableFloat("effectSpeed", d.EffectSpeed);
@@ -311,10 +317,7 @@ namespace CreaturePrefabCreator.Debug
             w.Field("sadleUser", mu.SadleUser);
             w.Field("canonicalSaddled", mu.CanonicalSaddled);
             w.Field("canonicalRidden", mu.CanonicalRidden);
-            w.Field("hasRidingAITempEnabled", mu.HasRidingAITempEnabled);
-            w.Field("ridingAIEnabledSinceSecs", mu.RidingAIEnabledSince);
             w.Field("hasPermanentAIDisabledMarker", mu.HasPermanentAIDisabledMarker);
-            w.Field("enableRidingAISuppression", mu.EnableRidingAISuppression);
             w.EndObject();
         }
 

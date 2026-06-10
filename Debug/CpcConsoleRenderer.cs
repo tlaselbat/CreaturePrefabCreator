@@ -237,9 +237,7 @@ namespace CreaturePrefabCreator.Debug
             Log($"  Tameable: exists={mu.TameableExists}  tamed={mu.IsTamed}  haveSaddle={mu.HaveSaddle}  haveRider={mu.HaveRider}");
             Log($"  Sadle component: root={mu.SadleComponentOnRoot}  child={mu.SadleComponentOnChild}  haveValidUser={mu.SadleHaveValidUser}  user={mu.SadleUser ?? "(none)"}");
             Log($"  Canonical: saddled={mu.CanonicalSaddled}  ridden={mu.CanonicalRidden}");
-            Log($"  RidingAITempEnabled: {mu.HasRidingAITempEnabled}" + (mu.HasRidingAITempEnabled ? $"  since={mu.RidingAIEnabledSince:F1}s ago" : ""));
             Log($"  PermanentAIDisabledMarker: {mu.HasPermanentAIDisabledMarker}");
-            Log($"  EnableRidingAISuppression: {mu.EnableRidingAISuppression}");
         }
 
         private static void RenderAllTameable(CpcAllTameableInfo at)
@@ -308,7 +306,6 @@ namespace CreaturePrefabCreator.Debug
             Log("Features:");
             Log($"  EnablePrefabOverrides: {plugin?.ConfigEnablePrefabOverrides?.Value}");
             Log($"  EnableGeneratedPrefabs: {plugin?.ConfigEnableGeneratedPrefabs?.Value}");
-            Log($"  EnableRidingAISuppression: {plugin?.ConfigEnableRidingAISuppression?.Value}");
             Log($"  EnableRuntimeModifiers: {plugin?.ConfigEnableRuntimeModifiers?.Value}");
             Log($"  EnableConfigSync: {plugin?.ConfigEnableConfigSync?.Value}");
 
@@ -320,7 +317,7 @@ namespace CreaturePrefabCreator.Debug
                 var status = RuntimeModifiers.RuntimeModifierManager.GetRuntimeStatus();
                 Log("Runtime Modifiers:");
                 Log($"  Enabled: {status.Enabled}  Rules: {status.TotalRules}/{status.ValidRules} valid/{status.InvalidRules} invalid");
-                Log($"  AI disabled count: {status.RuntimeAIDisabledCount}");
+                Log($"  AI disabled count: {status.RuntimeAIDisabledCount}  AI enabled (enableAI) count: {status.RuntimeAIEnabledCount}");
                 Log($"  Eval interval: {status.EvaluationInterval}s");
                 Log($"  Debug flags: DebugAIState={status.DebugAIState}  DebugMountState={status.DebugMountState}");
                 Log($"  Event buffer: {RuntimeModifiers.RuntimeModifierEventBuffer.Count}");

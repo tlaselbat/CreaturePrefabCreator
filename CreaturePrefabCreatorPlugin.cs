@@ -26,7 +26,6 @@ namespace CreaturePrefabCreator
         // Feature Safety Gates - P0: All high-risk/beta features default to false
         internal ConfigEntry<bool> ConfigEnableGeneratedPrefabs;
         internal ConfigEntry<bool> ConfigEnablePrefabOverrides;
-        internal ConfigEntry<bool> ConfigEnableRidingAISuppression;
         internal ConfigEntry<bool> ConfigEnableConfigSync;
         internal ConfigEntry<bool> ConfigEnableRuntimeModifiers;
         internal ConfigEntry<bool> ConfigEnableVisualOverrides;
@@ -59,8 +58,6 @@ namespace CreaturePrefabCreator
                 "Enable generated prefab system (baby creatures). [Stable]");
             ConfigEnablePrefabOverrides = Config.Bind("FeatureSafety", "EnablePrefabOverrides", true,
                 "Enable prefab override system. [Stable]");
-            ConfigEnableRidingAISuppression = Config.Bind("FeatureSafety", "EnableRidingAISuppression", false,
-                "BETA: Temporarily enable AI on creatures with disableAI=true while actively being ridden. Disabled by default until MountUp/AllTameable/dedicated-server testing is complete.");
             ConfigEnableConfigSync = Config.Bind("FeatureSafety", "EnableConfigSync", false,
                 "EXPERIMENTAL: Sync config from server to clients. Not fully implemented. [ExperimentalDisabledByDefault]");
             ConfigEnableRuntimeModifiers = Config.Bind("FeatureSafety", "EnableRuntimeModifiers", false,
@@ -78,19 +75,10 @@ namespace CreaturePrefabCreator
                 return;
             }
 
-            // Initialize saddle/rider reflection caches whenever any feature that depends on
-            // ridden-state detection is active. RuntimeModifiers rely on SaddledCreaturePatch.IsActivelyRidden,
-            // so the cache must be warm even when EnableRidingAISuppression is false.
-            if (ConfigEnableRidingAISuppression.Value || ConfigEnableRuntimeModifiers.Value)
+            // Initialize saddle/rider reflection caches for RuntimeModifiers
+            if (ConfigEnableRuntimeModifiers.Value)
             {
                 SaddledCreaturePatch.Initialize();
-            }
-
-            if (ConfigEnableRidingAISuppression.Value)
-            {
-                LogWarning("BETA FEATURE ENABLED: Riding AI Enable is active. " +
-                    "This temporarily enables AI on creatures with disableAI=true while actively being ridden. " +
-                    "If mounts behave unexpectedly, disable 'EnableRidingAISuppression' in config.");
             }
 
             // P0: Log warnings for any enabled beta features
@@ -150,11 +138,6 @@ namespace CreaturePrefabCreator
                     "Use caution with 'Players' faction - may cause unexpected aggro behavior.");
             }
 
-            if (!ConfigEnableRidingAISuppression.Value)
-            {
-                Log("Riding AI Enable is disabled (default). Creatures with disableAI=true will stay as decorative/statues even when ridden. " +
-                    "Enable 'EnableRidingAISuppression' only if you want disableAI creatures to 'come alive' while ridden.");
-            }
         }
 
         private void OnDestroy()

@@ -42,6 +42,8 @@ namespace CreaturePrefabCreator.Debug
         public bool PermanentAIDisabled;
         public bool RuntimeAIDisabledByCpc;
         public string RuntimeDisableReason;
+        public bool RuntimeAIEnabledByCpc;
+        public string RuntimeEnableReason;
         public string MovementBlockerSummary;
     }
 
@@ -55,6 +57,9 @@ namespace CreaturePrefabCreator.Debug
         public bool RuntimeAIDisabledByCpc;
         public string DisableReason;
         public float DisabledAt;
+        public bool RuntimeAIEnabledByCpc;
+        public string EnableReason;
+        public float EnabledAt;
         public bool OriginalBaseAIEnabled;
         public bool OriginalMonsterAIEnabled;
         public bool OriginalAnimalAIEnabled;
@@ -68,6 +73,7 @@ namespace CreaturePrefabCreator.Debug
         public bool ConditionsPass;
         public List<RuntimeConditionDetail> Conditions = new List<RuntimeConditionDetail>();
         public bool? EffectDisableAI;
+        public bool? EffectEnableAI;
         public float? EffectHealth;
         public float? EffectDamage;
         public float? EffectSpeed;
@@ -96,10 +102,7 @@ namespace CreaturePrefabCreator.Debug
         public string SadleUser;
         public bool CanonicalSaddled;
         public bool CanonicalRidden;
-        public bool HasRidingAITempEnabled;
-        public float RidingAIEnabledSince;
         public bool HasPermanentAIDisabledMarker;
-        public bool EnableRidingAISuppression;
     }
 
     internal class CpcAllTameableInfo
@@ -162,6 +165,7 @@ namespace CreaturePrefabCreator.Debug
         public bool HasTameable;
         public bool HasOffspringGrowup;
         public bool RuntimeAIDisabled;
+        public bool RuntimeAIEnabled;
     }
 
     internal class CpcRadiusDiagnosticReport
@@ -315,7 +319,8 @@ namespace CreaturePrefabCreator.Debug
             var monsterAI = go.GetComponent<MonsterAI>();
             var animalAI = go.GetComponent<AnimalAI>();
 
-            bool runtimeDisabled = RuntimeModifierManager.IsRuntimeAIDisabled(go.GetComponent<Character>(), out string reason);
+            bool runtimeDisabled = RuntimeModifierManager.IsRuntimeAIDisabled(go.GetComponent<Character>(), out string disableReason);
+            bool runtimeEnabled = RuntimeModifierManager.IsRuntimeAIEnabled(go.GetComponent<Character>(), out string enableReason);
             bool permanentDisabled = go.GetComponent<PermanentAIDisabledMarker>() != null;
 
             var info = new CpcAIInfo
@@ -328,7 +333,9 @@ namespace CreaturePrefabCreator.Debug
                 AnimalAIEnabled = animalAI?.enabled ?? false,
                 PermanentAIDisabled = permanentDisabled,
                 RuntimeAIDisabledByCpc = runtimeDisabled,
-                RuntimeDisableReason = reason
+                RuntimeDisableReason = disableReason,
+                RuntimeAIEnabledByCpc = runtimeEnabled,
+                RuntimeEnableReason = enableReason
             };
 
             if (baseAI != null)
@@ -353,7 +360,8 @@ namespace CreaturePrefabCreator.Debug
             if (!info.BaseAIEnabled && info.BaseAIExists) blockers.Append("BaseAI disabled; ");
             if (!info.MonsterAIEnabled && info.MonsterAIExists) blockers.Append("MonsterAI disabled; ");
             if (info.PermanentAIDisabled) blockers.Append("permanent disableAI marker; ");
-            if (info.RuntimeAIDisabledByCpc) blockers.Append($"runtime modifier ({reason}); ");
+            if (info.RuntimeAIDisabledByCpc) blockers.Append($"runtime disableAI modifier ({disableReason}); ");
+            if (info.RuntimeAIEnabledByCpc) blockers.Append($"runtime enableAI modifier ({enableReason}); ");
             info.MovementBlockerSummary = blockers.Length > 0 ? blockers.ToString().TrimEnd(' ', ';') : "none";
 
             return info;
@@ -384,6 +392,9 @@ namespace CreaturePrefabCreator.Debug
                     info.RuntimeAIDisabledByCpc = checkResult.RuntimeAIDisabledByCpc;
                     info.DisableReason = checkResult.DisableReason;
                     info.DisabledAt = checkResult.DisabledAt;
+                    info.RuntimeAIEnabledByCpc = checkResult.RuntimeAIEnabledByCpc;
+                    info.EnableReason = checkResult.EnableReason;
+                    info.EnabledAt = checkResult.EnabledAt;
                     info.OriginalBaseAIEnabled = checkResult.OriginalBaseAIEnabled;
                     info.OriginalMonsterAIEnabled = checkResult.OriginalMonsterAIEnabled;
                     info.OriginalAnimalAIEnabled = checkResult.OriginalAnimalAIEnabled;
@@ -397,6 +408,7 @@ namespace CreaturePrefabCreator.Debug
                                 RuleIndex = d.RuleIndex,
                                 ConditionsPass = d.ConditionsPass,
                                 EffectDisableAI = d.EffectDisableAI,
+                                EffectEnableAI = d.EffectEnableAI,
                                 EffectHealth = d.EffectHealth,
                                 EffectDamage = d.EffectDamage,
                                 EffectSpeed = d.EffectSpeed
@@ -434,8 +446,7 @@ namespace CreaturePrefabCreator.Debug
                 PluginDetected = SaddledCreaturePatch.MountUpDetected,
                 TypeResolved = SaddledCreaturePatch.MountUpTypeResolved,
                 CanonicalSaddled = SaddledCreaturePatch.IsSaddledViaCanonicalPath(ch),
-                CanonicalRidden = SaddledCreaturePatch.IsActivelyRidden(ch),
-                EnableRidingAISuppression = plugin?.ConfigEnableRidingAISuppression?.Value ?? false
+                CanonicalRidden = SaddledCreaturePatch.IsActivelyRidden(ch)
             };
 
             var tameable = ch.GetComponent<Tameable>();
@@ -461,13 +472,6 @@ namespace CreaturePrefabCreator.Debug
                 info.SadleHaveValidUser = SafeInvoke<bool>(sadleToUse, "HaveValidUser");
                 var userId = TryGetField(sadleToUse, "_user") ?? InvokeMethod(sadleToUse, "GetUser");
                 info.SadleUser = userId?.ToString();
-            }
-
-            var marker = ch.GetComponent<Patches.RidingAITempEnabledMarker>();
-            if (marker != null)
-            {
-                info.HasRidingAITempEnabled = true;
-                info.RidingAIEnabledSince = UnityEngine.Time.time - marker.EnabledTime;
             }
 
             return info;
@@ -603,13 +607,13 @@ namespace CreaturePrefabCreator.Debug
         {
             if (report.AI != null)
             {
-                if (report.AI.PermanentAIDisabled && !report.AI.RuntimeAIDisabledByCpc)
+                if (report.AI.PermanentAIDisabled && !report.AI.RuntimeAIDisabledByCpc && !report.AI.RuntimeAIEnabledByCpc)
                     report.Warnings.Add("Creature has permanent disableAI marker. AI is permanently suppressed by prefab config.");
                 if (report.AI.RuntimeAIDisabledByCpc)
                     report.Warnings.Add($"Creature AI is currently disabled by CPC runtime modifier. Reason: {report.AI.RuntimeDisableReason}");
+                if (report.AI.RuntimeAIEnabledByCpc)
+                    report.Warnings.Add($"Creature AI is currently enabled by CPC runtime enableAI modifier. Reason: {report.AI.RuntimeEnableReason}");
             }
-            if (report.MountUp != null && report.MountUp.CanonicalRidden && !report.MountUp.HasRidingAITempEnabled)
-                report.Warnings.Add("Creature is being ridden but RidingAITempEnabled marker is absent.");
             if (report.Identity != null && !report.Identity.IsOwner)
                 report.Warnings.Add("You are not the network owner of this creature. Some diagnostics may be incomplete.");
         }
@@ -617,7 +621,7 @@ namespace CreaturePrefabCreator.Debug
         private static void BuildLiveSuggestions(CpcLiveDiagnosticReport report)
         {
             string prefab = report.Identity?.PrefabName ?? "?";
-            if (report.AI?.RuntimeAIDisabledByCpc == true)
+            if (report.AI?.RuntimeAIDisabledByCpc == true || report.AI?.RuntimeAIEnabledByCpc == true)
                 report.SuggestedCommands.Add($"cpc_print_console live --target --debug-runtime");
             if (report.MountUp?.PluginDetected == true)
                 report.SuggestedCommands.Add($"cpc_print_console live --target --debug-mountup");
@@ -661,7 +665,8 @@ namespace CreaturePrefabCreator.Debug
                     HasAnimalAI = ch.GetComponent<AnimalAI>() != null,
                     HasTameable = ch.GetComponent<Tameable>() != null,
                     HasOffspringGrowup = ch.GetComponent<GeneratedPrefabs.OffspringGrowup>() != null,
-                    RuntimeAIDisabled = runtimeDisabled
+                    RuntimeAIDisabled = runtimeDisabled,
+                    RuntimeAIEnabled = RuntimeModifierManager.IsRuntimeAIEnabled(ch, out _)
                 });
             }
 
