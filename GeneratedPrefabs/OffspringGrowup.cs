@@ -18,6 +18,10 @@ namespace CreaturePrefabCreator.GeneratedPrefabs
         public const string GrowTriggeredKey = "CreaturePrefabCreator_GrowTriggered";
         public const string AdultPrefabKey = "CreaturePrefabCreator_AdultPrefab";
         public const string GrowTimeKey = "CreaturePrefabCreator_GrowTimeSeconds";
+        // CPC-owned tamed preservation key — written at growup/spawn, read by TameableAwakePatch.
+        // Using a CPC-owned key avoids races with AllTameable which destroys and recreates Tameable.
+        public const string PreserveTamedKey = "CPC_PreserveTamed";
+        public static readonly int PreserveTamedHash = PreserveTamedKey.GetStableHashCode();
 
         private static readonly int BirthTimeHash = BirthTimeKey.GetStableHashCode();
         private static readonly int GrowTriggeredHash = GrowTriggeredKey.GetStableHashCode();
@@ -41,8 +45,11 @@ namespace CreaturePrefabCreator.GeneratedPrefabs
             zdo.Set(AdultPrefabHash, adultPrefabName);
             zdo.Set(GrowTimeHash, growTimeSeconds);
 
-            // Use ZNet time (world time) instead of DateTime.UtcNow for persistent growth
-            if (zdo.GetLong(BirthTimeHash, 0L) == 0L)
+            // Always reset BirthTime on Awake unless growth was already triggered.
+            // Without this, a reused or stale ZDO (from a previous cub session) can carry an
+            // old BirthTime that makes elapsed time pass immediately on the first FixedUpdate.
+            bool alreadyTriggered = zdo.GetBool(GrowTriggeredHash, false);
+            if (!alreadyTriggered)
             {
                 long currentTime = ZNet.instance?.GetTime().Ticks ?? DateTime.UtcNow.Ticks;
                 zdo.Set(BirthTimeHash, currentTime);
@@ -101,8 +108,20 @@ namespace CreaturePrefabCreator.GeneratedPrefabs
             var adultZNV = adult.GetComponent<ZNetView>();
             if (adultZNV != null)
             {
+                // Capture tamed state NOW before the baby is destroyed.
+                // AllTameable destroys and recreates Tameable inside MonsterAI.Awake, so
+                // IsTamed() is unreliable. Read from the ZDO 'tamed' key or our own CPC key.
+                bool capturedTamed = false;
+                if (preserveTamed)
+                {
+                    bool fromCpcKey = zdo.GetBool(PreserveTamedHash, false);
+                    bool fromTamedKey = zdo.GetBool("tamed".GetStableHashCode(), false);
+                    capturedTamed = fromCpcKey || fromTamedKey;
+                    CreaturePrefabCreatorPlugin.Instance?.Log(
+                        $"[OffspringGrowup] Growup tamed capture: CPC_PreserveTamed={fromCpcKey}, 'tamed' ZDO key={fromTamedKey}, capturedTamed={capturedTamed}");
+                }
                 ZDO capturedFromZDO = zdo;
-                CreaturePrefabCreatorPlugin.Instance?.RunCoroutine(DeferredTransferData(adultZNV, capturedFromZDO));
+                CreaturePrefabCreatorPlugin.Instance?.RunCoroutine(DeferredTransferData(adultZNV, capturedFromZDO, capturedTamed));
             }
             else
             {
@@ -115,7 +134,8 @@ namespace CreaturePrefabCreator.GeneratedPrefabs
                 Destroy(gameObject);
         }
 
-        private IEnumerator DeferredTransferData(ZNetView adultZNV, ZDO fromZDO)
+
+        private IEnumerator DeferredTransferData(ZNetView adultZNV, ZDO fromZDO, bool capturedTamed)
         {
             yield return null;
 
@@ -123,17 +143,41 @@ namespace CreaturePrefabCreator.GeneratedPrefabs
             var toZDO = adultZNV.GetZDO();
             if (toZDO == null) yield break;
 
-            TransferData(fromZDO, toZDO);
+            CreaturePrefabCreatorPlugin.Instance?.Log(
+                $"[OffspringGrowup] DeferredTransferData: adult='{adultZNV.gameObject.name}', capturedTamed={capturedTamed}");
+
+            TransferData(fromZDO, toZDO, capturedTamed);
+
+            // Tameable.Awake already fired when the adult was Instantiated, so TameableAwakePatch
+            // will not fire again. Apply SetTamed directly here after AllTameable has run.
+            if (capturedTamed && preserveTamed)
+            {
+                var character = adultZNV.GetComponent<Character>();
+                if (character != null)
+                {
+                    bool wasTamed = character.IsTamed();
+                    if (!wasTamed)
+                        character.SetTamed(true);
+                    CreaturePrefabCreatorPlugin.Instance?.Log(
+                        $"[OffspringGrowup] SetTamed on adult '{adultZNV.gameObject.name}': wasTamed={wasTamed}, IsTamed after={character.IsTamed()}");
+                }
+                else
+                {
+                    CreaturePrefabCreatorPlugin.Instance?.Log(
+                        $"[OffspringGrowup] Adult '{adultZNV.gameObject.name}' has no Character component \u2014 SetTamed skipped.");
+                }
+            }
         }
 
-        private void TransferData(ZDO fromZDO, ZDO toZDO)
+        private void TransferData(ZDO fromZDO, ZDO toZDO, bool capturedTamed)
         {
             try
             {
                 if (preserveTamed)
                 {
-                    int tamedHash = "tamed".GetStableHashCode();
-                    toZDO.Set(tamedHash, fromZDO.GetBool(tamedHash, false));
+                    // Write to CPC-owned key. TameableAwakePatch reads this after AllTameable
+                    // finishes recreating Tameable (in Tameable.Awake postfix) and calls SetTamed.
+                    toZDO.Set(PreserveTamedHash, capturedTamed);
                 }
             }
             catch (Exception ex)

@@ -9,6 +9,7 @@ using System.Collections;
 using System.Reflection;
 using System.Linq;
 using UnityEngine;
+using static CreaturePrefabCreator.GeneratedPrefabs.OffspringGrowup;
 
 namespace CreaturePrefabCreator.Debug
 {
@@ -118,6 +119,14 @@ namespace CreaturePrefabCreator.Debug
 
                 Vector3 basePos = GetPlayerPos() + Vector3.forward * distance;
 
+                // If spawning tamed, set m_startsTamed on the prefab Tameable before spawning.
+                // SpawnObject doesn't return the instance, so synchronous pre-spawn flag is the
+                // only race-proof approach (survives skiptime/instant growup in same frame).
+                Tameable prefabTameable = spawnTamed ? prefab.GetComponent<Tameable>() : null;
+                bool originalStartsTamed = prefabTameable != null && prefabTameable.m_startsTamed;
+                if (prefabTameable != null)
+                    prefabTameable.m_startsTamed = true;
+
                 for (int i = 0; i < count; i++)
                 {
                     Vector3 pos = basePos + new Vector3(i * 2f, 0f, 0f);
@@ -135,6 +144,10 @@ namespace CreaturePrefabCreator.Debug
                             DeferredSetTamed(capPrefabName, capPos, capTamed, capHasCharacter, capLevel, ownerID));
                     }
                 }
+
+                // Restore prefab Tameable to original state so subsequent non-tamed spawns are unaffected.
+                if (prefabTameable != null)
+                    prefabTameable.m_startsTamed = originalStartsTamed;
 
                 string levelSuffix = level > 1 && hasCharacter ? $" level={level}" : "";
                 string suffix = spawnTamed ? $" (tamed{levelSuffix})" : (level > 1 && hasCharacter ? $" ({levelSuffix.TrimStart()})" : "");
@@ -588,23 +601,55 @@ namespace CreaturePrefabCreator.Debug
         private static IEnumerator DeferredSetTamed(string prefabName, Vector3 spawnPos, bool tamed, bool hasCharacter, int level, long ownerID)
         {
             yield return null;
+            yield return null;
+
+            CreaturePrefabCreatorPlugin.Instance?.Log(
+                $"[DeferredSetTamed] Searching for '{prefabName}' near {spawnPos} tamed={tamed}");
 
             var allZNVs = Object.FindObjectsByType<ZNetView>(FindObjectsSortMode.None);
+            bool found = false;
             foreach (var znv in allZNVs)
             {
                 if (znv == null || znv.GetZDO() == null) continue;
                 if (!znv.gameObject.name.StartsWith(prefabName)) continue;
                 if (Vector3.Distance(znv.transform.position, spawnPos) > 5f) continue;
 
+                found = true;
                 var zdo = znv.GetZDO();
+                CreaturePrefabCreatorPlugin.Instance?.Log(
+                    $"[DeferredSetTamed] Found '{znv.gameObject.name}' at {znv.transform.position}");
+
                 if (tamed)
                 {
-                    zdo.Set("tamed".GetStableHashCode(), true);
+                    // Write CPC-owned key for persistence across respawns/reloads.
+                    zdo.Set(PreserveTamedHash, true);
                     zdo.Set("creator".GetStableHashCode(), ownerID);
+                    // Also call SetTamed directly — Tameable.Awake has already fired so
+                    // TameableAwakePatch won't fire again for this instance.
+                    var character = znv.GetComponent<Character>();
+                    if (character != null)
+                    {
+                        bool wasTamed = character.IsTamed();
+                        if (!wasTamed)
+                            character.SetTamed(true);
+                        CreaturePrefabCreatorPlugin.Instance?.Log(
+                            $"[DeferredSetTamed] SetTamed on '{znv.gameObject.name}': wasTamed={wasTamed}, IsTamed after={character.IsTamed()}");
+                    }
+                    else
+                    {
+                        CreaturePrefabCreatorPlugin.Instance?.Log(
+                            $"[DeferredSetTamed] '{znv.gameObject.name}' has no Character component — SetTamed skipped.");
+                    }
                 }
                 if (level > 1 && hasCharacter)
                     zdo.Set("level".GetStableHashCode(), level);
                 break;
+            }
+
+            if (!found)
+            {
+                CreaturePrefabCreatorPlugin.Instance?.Log(
+                    $"[DeferredSetTamed] WARN: No '{prefabName}' found within 5m of {spawnPos} after 2 frames.");
             }
         }
 
