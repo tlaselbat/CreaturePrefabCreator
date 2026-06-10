@@ -1,0 +1,459 @@
+================================================================================
+CREATURE PREFAB CREATOR - CONFIGURABLE COMPONENT PARAMETERS REFERENCE
+================================================================================
+This document lists all potential creature components and their parameters
+that could be exposed as configurable options in creaturePrefabCreator.json
+
+================================================================================
+SECTION 1: CURRENTLY IMPLEMENTED PARAMETERS
+================================================================================
+
+GeneratedPrefabConfig:
+  - enabled (bool)
+  - sourcePrefab (string)
+  - newPrefab (string)
+  - adultPrefab (string)
+  - displayName (string)
+  - scale (float)
+  - growIntoAdult (bool)
+  - growTimeSeconds (float)
+  - preserveTamed (bool)
+  - preserveLevel (bool)
+  - preserveOwner (bool)
+  - preserveName (bool)
+  - healthMultiplier (float?)
+  - damageMultiplier (float?)
+  - clearDeathEffects (bool)
+  - copyDeathEffectsFrom (string)
+  - deathEffectScaleMultiplier (float?)
+
+PrefabOverrideConfig:
+  - enabled (bool)
+  - targetPrefab (string)
+  - displayName (string)
+  - scale (float)
+  - applyToExistingSpawnedCreatures (bool)
+  - propagateToGeneratedVariants (bool)
+  - healthMultiplier (float?)
+  - damageMultiplier (float?)
+  - clearDeathEffects (bool)
+  - copyDeathEffectsFrom (string)
+  - deathEffectScaleMultiplier (float?)
+
+================================================================================
+SECTION 2: CHARACTER COMPONENT (Character.cs)
+================================================================================
+
+BASIC INFO:
+  - m_name (string) - creature display name
+  - m_health (float) - max health points
+  - m_ttl (float) - time to live (auto-despawn timer)
+
+MOVEMENT & PHYSICS:
+  - m_speed (float) - base movement speed
+  - m_turnSpeed (float) - rotation/turning speed
+  - m_runSpeed (float) - running speed multiplier
+  - m_walkSpeed (float) - walking speed
+  - m_swimSpeed (float) - swimming speed
+  - m_swimTurnSpeed (float) - swim turning speed
+  - m_flySpeed (float) - flying speed
+  - m_jumpForce (float) - jump force/power
+  - m_flySlowSpeed (float) - slow flight speed
+  - m_flyFastSpeed (float) - fast flight speed
+  - m_acceleration (float) - movement acceleration
+
+COMBAT:
+  - m_damageMultiplier (float) - global damage multiplier
+  - m_defeatSetGlobalKey (string) - key set when defeated
+  - m_staggerWhenBlocked (bool) - stagger on blocked attacks
+  - m_staggerMultiplier (float) - stagger effect multiplier
+
+VISIBILITY:
+  - m_crouchSpeed (float) - speed while crouching
+  - m_crouchTiredSpeed (float) - crouch speed when tired
+
+DEATH & DESTRUCTION:
+  - m_deathEffects (EffectList) - effects played on death
+  - m_destroyEffects (EffectList) - effects on destruction
+  - m_hitEffects (EffectList) - effects when hit
+  - m_critHitEffects (EffectList) - critical hit effects
+  - m_backstabHitEffects (EffectList) - backstab hit effects
+  - m_damageTextColor (Color) - color of damage numbers
+
+FACTION & AGGRO:
+  - m_faction (Character.Faction) - creature faction
+  - m_boss (bool) - is boss creature
+  - m_bossEvent (string) - boss event name
+  - m_defeatSetGlobalKey (string) - global key set on defeat
+
+================================================================================
+SECTION 3: HUMANOID COMPONENT (Humanoid.cs)
+================================================================================
+
+EQUIPMENT:
+  - m_defaultItems (GameObject[]) - default equipment/attacks
+  - m_randomWeapons (GameObject[]) - random weapon pool
+  - m_randomArmor (GameObject[]) - random armor pool
+  - m_randomShield (GameObject[]) - random shield pool
+  - m_randomSets (Humanoid.RandomItemSet[]) - equipment sets
+
+INVENTORY:
+  - m_inventory (Inventory) - creature inventory
+  - m_dropOnDeath (bool) - drop items on death
+
+COMBAT SKILLS:
+  - m_blockSkill (Skills.SkillType) - blocking skill type
+  - m_sneakSkill (Skills.SkillType) - sneaking skill type
+  - m_weapons (Transform[]) - weapon attachment points
+  - m_shield (Transform) - shield transform
+  - m_shieldOffset (Vector3) - shield position offset
+
+ANIMATION:
+  - m_animator (ZSyncAnimation) - animator reference
+  - m_animSpeed (float) - animation speed multiplier
+  - m_useCustomization (bool) - use character customization
+
+================================================================================
+SECTION 4: MONSTERAI & BASEAI COMPONENTS (MonsterAI.cs, BaseAI.cs)
+================================================================================
+
+MONSTERAI BEHAVIOR:
+  - m_viewRange (float) - detection/agro range
+  - m_viewAngle (float) - field of view angle
+  - m_hearRange (float) - hearing range
+  - m_alertRange (float) - alert other creatures range
+  - m_fleeIfHurtWhenTowerCantSee (bool) - flee logic
+  - m_fleeIfNotAlerted (bool) - flee when not alert
+  - m_fleeInLava (bool) - avoid lava
+  - m_aggravatable (bool) - can be aggravated
+  - m_tamable (bool) - can be tamed
+  - m_consumeItems (ItemDrop[]) - items creature eats
+  - m_consumeRange (float) - eat range
+  - m_consumeInterval (float) - eat interval seconds
+  - m_consumeSearchRange (float) - search range for food
+  - m_consumeHeal (float) - healing from eating
+  - m_spawnMessage (string) - spawn announcement message
+
+ROAMING:
+  - m_idleSound (float) - idle sound interval
+  - m_idleSoundChance (float) - idle sound probability
+  - m_sleeping (bool) - sleeps at night
+  - m_wakeupRange (float) - wake up detection range
+  - m_wakeupEffects (EffectList) - wake up effects
+  - m_roamRange (float) - wandering range
+  - m_roamTime (float) - time between roam changes
+
+FIGHT OR FLIGHT:
+  - m_fleeRange (float) - flee distance
+  - m_fleeTime (float) - flee duration
+  - m_chaseTime (float) - chase duration
+  - m_attackInterval (float) - time between attacks
+  - m_circleTargetInterval (float) - circling behavior interval
+  - m_circleTargetDuration (float) - circling duration
+  - m_alertedEffects (EffectList) - alerted state effects
+
+FRIENDLY/NEUTRAL:
+  - m_friendAttacked (bool) - defend friends
+  - m_trustInfected (bool) - trust infected creatures
+  - m_greetMessage (string) - greeting message
+  - m_greetEffects (EffectList) - greeting effects
+
+BASEAI CORE:
+  - m_jumpInterval (float) - jump cooldown
+  - m_randomMoveInterval (float) - random movement interval
+  - m_randomMoveRange (float) - random movement range
+  - m_smoothMovement (bool) - smooth movement interpolation
+
+================================================================================
+SECTION 5: TAMING COMPONENTS (Tameable.cs)
+================================================================================
+
+TAMING PARAMETERS:
+  - m_tamingTime (float) - time to tame (seconds)
+  - m_fedDuration (float) - how long food lasts
+  - m_tameTimeLeft (float) - remaining tame time
+  - m_tamingRewards (ItemDrop[]) - items given when tamed
+  - m_commandable (bool) - can be commanded
+  - m_hoverText (string) - hover text display
+  - m_tamedName (string) - default tamed name
+  - m_petEffect (EffectList) - pet interaction effects
+
+TAME BEHAVIOR:
+  - m_addNeck (bool) - add neck to tameable
+  - m_skills (Skills) - tamed creature skills
+  - m_tamed (bool) - is currently tamed
+
+================================================================================
+SECTION 6: PROCREATION & BREEDING (Procreation.cs)
+================================================================================
+
+BREEDING PARAMETERS:
+  - m_pregnancyDuration (float) - pregnancy time
+  - m_totalCheckRange (float) - mate detection range
+  - m_maxCreatures (int) - max creatures in area
+  - m_partnerCheckRange (float) - partner search range
+  - m_offspring (GameObject) - offspring prefab spawned
+  - m_offspringName (string) - offspring display name
+  - m_spawnOffset (Vector3) - spawn position offset
+  - m_requiredAffinity (float) - required love/affinity level
+  - m_requiredRoom (float) - required space/room
+  - m_requiredFood (string) - food needed for breeding
+  - m_pregnancyPause (bool) - pause pregnancy
+  - m_pregnancyEffects (EffectList) - pregnancy effects
+  - m_birthEffects (EffectList) - birth/spawn effects
+
+================================================================================
+SECTION 7: CHARACTERDROP - LOOT (CharacterDrop.cs)
+================================================================================
+
+DROPS:
+  - m_drops (List<CharacterDrop.Drop>) - list of possible drops
+  - m_dropMin (int) - minimum drops
+  - m_dropMax (int) - maximum drops
+
+PER DROP ENTRY:
+  - m_prefab (GameObject) - item to drop
+  - m_amountMin (int) - minimum amount
+  - m_amountMax (int) - maximum amount
+  - m_chance (float) - drop probability (0-1)
+  - m_levelMultiplier (bool) - scales with creature level
+  - m_onePerPlayer (bool) - one per player
+  - m_alwaysAppend (bool) - always add to drops
+
+================================================================================
+SECTION 8: VISUAL & EFFECTS COMPONENTS
+================================================================================
+
+VisCreature COMPONENT:
+  - m_meshSwapper (VisMeshSwapper) - mesh variations
+  - m_levelEffects (LevelEffects) - level-based visual effects
+  - m_setEffect (GameObject) - active status effect visual
+  - m_effectScale (float) - effect scale multiplier
+
+LevelEffects COMPONENT:
+  - m_levelSetups (LevelEffects.LevelSetup[]) - level-based setups
+    - m_minLevel (int) - minimum level for effect
+    - m_maxLevel (int) - maximum level for effect
+    - m_effects (EffectList) - effects at this level
+    - m_aura (GameObject) - aura visual
+    - m_light (Light) - light effect
+
+LODGroup COMPONENT:
+  - fadeMode (LODFadeMode) - fade mode
+  - animateCrossFading (bool) - crossfade animation
+  - lodBias (float) - LOD bias multiplier
+
+================================================================================
+SECTION 9: PHYSICS & COLLISION
+================================================================================
+
+Rigidbody COMPONENT:
+  - mass (float) - mass in kg
+  - drag (float) - linear drag
+  - angularDrag (float) - rotational drag
+  - useGravity (bool) - affected by gravity
+  - isKinematic (bool) - physics controlled by animation
+  - collisionDetectionMode (CollisionDetectionMode) - collision detection
+  - constraints (RigidbodyConstraints) - movement constraints
+
+Collider COMPONENTS:
+  - enabled (bool) - collider active
+  - isTrigger (bool) - trigger only (no physics)
+  - material (PhysicMaterial) - physics material
+  - center (Vector3) - collider center offset
+  - size/radius/height (varies by type) - collider dimensions
+
+================================================================================
+SECTION 10: NETWORK & ZNETVIEW (ZNetView.cs)
+================================================================================
+
+NETWORK SYNC:
+  - m_syncInitialScale (bool) - sync scale to clients
+  - m_syncInitialRotation (bool) - sync rotation to clients
+  - m_distantSpawn (bool) - spawn at distance
+  - m_prefabHash (int) - prefab identifier hash
+  - m_type (ZDO.ObjectType) - object type (solid/terrain/etc)
+
+================================================================================
+SECTION 11: AUDIO COMPONENTS
+================================================================================
+
+CreatureAudio COMPONENT:
+  - m_footstepAudio (AudioSource[]) - footstep sounds
+  - m_idleSounds (AudioClip[]) - idle vocalizations
+  - m_hurtSounds (AudioClip[]) - damage sounds
+  - m_deathSounds (AudioClip[]) - death sounds
+  - m_alertedSounds (AudioClip[]) - alert sounds
+  - m_attackSounds (AudioClip[]) - attack sounds
+  - m_footstepInterval (float) - footstep cooldown
+  - m_footstepRunMultiplier (float) - run step frequency
+
+AudioSource COMPONENT:
+  - clip (AudioClip) - sound file
+  - volume (float) - volume (0-1)
+  - pitch (float) - pitch multiplier
+  - spatialBlend (float) - 2D to 3D blend
+  - minDistance (float) - full volume distance
+  - maxDistance (float) - audible distance
+  - loop (bool) - loop playback
+  - playOnAwake (bool) - auto-play on spawn
+
+================================================================================
+SECTION 12: ADDITIONAL GAMEPLAY COMPONENTS
+================================================================================
+
+Foot COMPONENT:
+  - m_footOffset (Vector3) - foot position offset
+  - m_footStepEffect (EffectList) - footstep effects
+  - m_footStepMeshType (FootStep.Meshes) - surface type
+
+WaterInteract COMPONENT:
+  - m_waterLevelOffset (float) - water interaction level
+  - m_swimVelocity (float) - swim velocity
+
+MineRock COMPONENT (for mineable creatures like golems):
+  - m_health (float) - rock/creature health
+  - m_minToolTier (int) - minimum tool tier required
+  - m_drops (DropTable) - drops when mined
+  - m_hitEffects (EffectList) - hit effects
+  - m_destroyEffects (EffectList) - destroy effects
+
+Destructible COMPONENT:
+  - m_minDamage (float) - minimum damage to hurt
+  - m_damageModifiers (DamageModifiers) - damage type modifiers
+  - m_hitNoise (float) - noise when hit
+  - m_destroyNoise (float) - noise when destroyed
+
+================================================================================
+SECTION 13: EFFECTS & PARTICLE SYSTEMS
+================================================================================
+
+EffectList STRUCTURE:
+  - m_effectPrefabs (EffectList.EffectData[]) - array of effects
+    - m_prefab (GameObject) - effect prefab
+    - m_enabled (bool) - effect enabled
+    - m_attach (bool) - attach to creature
+    - m_inheritParentRotation (bool) - inherit rotation
+    - m_inheritParentScale (bool) - inherit scale
+    - m_randomRotation (bool) - random rotation
+    - m_scale (bool) - allow scaling
+    - m_childTransform (string) - attach to child bone
+
+ParticleSystem COMPONENT:
+  - startLifetime (float) - particle lifetime
+  - startSpeed (float) - initial speed
+  - startSize (float) - initial size
+  - startColor (Color) - initial color
+  - maxParticles (int) - particle limit
+  - emissionRate (float) - particles per second
+  - scalingMode (ParticleSystemScalingMode) - scaling behavior
+
+================================================================================
+SECTION 14: PREFAB CONFIGURATION (GameObject/Transform)
+================================================================================
+
+TRANSFORM:
+  - localScale (Vector3) - X/Y/Z scale
+  - localPosition (Vector3) - position offset
+  - localRotation (Quaternion) - rotation offset
+
+GameObject:
+  - tag (string) - Unity tag
+  - layer (int) - physics layer
+  - isStatic (bool) - static batching
+  - hideFlags (HideFlags) - visibility flags
+
+================================================================================
+SECTION 15: CUSTOM MOD COMPONENTS (CreaturePrefabCreator)
+================================================================================
+
+OffspringGrowup COMPONENT:
+  - adultPrefabName (string) - prefab to grow into
+  - growTimeSeconds (float) - growth duration
+  - preserveTamed (bool) - keep tame status
+  - preserveLevel (bool) - keep star level
+  - preserveOwner (bool) - keep ownership
+  - preserveName (bool) - keep custom name
+
+================================================================================
+SECTION 16: RECOMMENDED HIGH-PRIORITY ADDITIONS
+================================================================================
+
+Based on common modding needs, these are the most useful parameters to add:
+
+1. TAMING:
+   - tamingTime (float)
+   - tameable (bool)
+   - commandable (bool)
+   - tamingRewards (string[] item names)
+
+2. MOVEMENT:
+   - baseSpeed (float)
+   - runSpeedMultiplier (float)
+   - swimSpeed (float)
+   - flySpeed (float)
+   - turnSpeed (float)
+
+3. COMBAT AI:
+   - viewRange (float)
+   - hearRange (float)
+   - attackInterval (float)
+   - fleeHealthPercent (float)
+   - aggressive (bool)
+
+4. BREEDING:
+   - breedable (bool)
+   - pregnancyDuration (float)
+   - maxOffspring (int)
+   - requiredFood (string)
+
+5. SPAWNING:
+   - spawnAltitudeMin/Max (float)
+   - spawnInForest (bool)
+   - spawnOutsideForest (bool)
+   - spawnDaytimeOnly (bool)
+   - spawnNighttimeOnly (bool)
+
+6. VISUALS:
+   - modelScale (Vector3 - per-axis scaling)
+   - tintColor (Color)
+   - glowColor (Color)
+   - particleEffects (EffectList)
+
+7. AUDIO:
+   - customIdleSounds (string[])
+   - customAttackSounds (string[])
+   - customDeathSounds (string[])
+
+8. LOOT:
+   - customDrops (list of item + chance)
+   - dropMultiplier (float)
+   - onlyDropWhenTamed (bool)
+
+================================================================================
+SECTION 17: IMPLEMENTATION NOTES
+================================================================================
+
+For each configurable parameter, the implementation pattern is:
+
+1. Add the property to the config class (GeneratedPrefabConfig or PrefabOverrideConfig)
+2. In the manager, use GetComponent<T>() to access the component
+3. Apply the value if the component exists
+4. Log warnings if the component is missing
+
+Example pattern:
+    var monsterAI = prefab.GetComponent<MonsterAI>();
+    if (monsterAI != null && config.ViewRange.HasValue)
+    {
+        monsterAI.m_viewRange = config.ViewRange.Value;
+        plugin.Log($"Set viewRange to {config.ViewRange.Value}");
+    }
+
+Null-Safe Pattern:
+    - Always null-check components before accessing
+    - Use HasValue checks for nullable float? parameters
+    - Log appropriate warnings for missing components
+
+================================================================================
+END OF REFERENCE
+================================================================================

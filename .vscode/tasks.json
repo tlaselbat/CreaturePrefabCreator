@@ -1,0 +1,25 @@
+    {
+        // See https://go.microsoft.com/fwlink/?LinkId=733558
+        // for the documentation about the tasks.json format
+        "version": "2.0.0",
+        "tasks": [
+            {
+                "label": "Run Valheim with BepInEx",
+                "type": "shell",
+                "command": "powershell",
+                "args": [
+                    "-Command",
+                    "$logPath = 'C:\\Users\\16265\\AppData\\LocalLow\\IronGate\\Valheim\\Player.log'; Write-Host 'Starting Valheim with BepInEx...' -ForegroundColor Green; Start-Process -FilePath 'C:\\Users\\16265\\DevelopmentProjects\\ValheimModding\\LaunchValheim\\ModTestingProfile\\Valheim\\valheim.exe'; Write-Host 'Valheim launched successfully.' -ForegroundColor Green; Write-Host 'Watching Player.log from AppData - use Ctrl+C to stop' -ForegroundColor Cyan; if (Test-Path $logPath) { Get-Content $logPath -Wait -Tail 50 } else { Write-Host 'Waiting for Player.log to be created...' -ForegroundColor Yellow; while (-not (Test-Path $logPath)) { Start-Sleep -Seconds 1 }; Get-Content $logPath -Wait -Tail 50 }"
+                ],
+                "problemMatcher": [],
+                "options": {
+                    "cwd": "C:\\Users\\16265\\DevelopmentProjects\\ValheimModding\\LaunchValheim\\ModTestingProfile\\Valheim"
+                },
+                "group": {
+                    "kind": "build",
+                    "isDefault": true
+                },
+                "isBackground": true
+            }
+        ]
+    }

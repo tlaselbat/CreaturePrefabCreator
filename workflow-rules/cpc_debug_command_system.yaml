@@ -1,0 +1,652 @@
+```yaml
+cpc_debug_command_system:
+  document_type: "command_system_specification"
+  project: "CreaturePrefabCreator"
+  short_name: "CPC"
+  purpose: >
+    Define the final debug command-line structure for CreaturePrefabCreator.
+    The system separates readable in-game console diagnostics, structured JSON
+    dumps, live test spawning, config reloads, plugin status, command help,
+    and destructive world repair actions.
+
+  design_goals:
+    - "Keep the command line easy to remember."
+    - "Avoid having many separate top-level commands for every diagnostic category."
+    - "Use a consistent command pattern for console output and JSON output."
+    - "Keep destructive world repair commands separate from read-only diagnostics."
+    - "Make the console commands useful during live in-game debugging."
+    - "Make JSON dumps structured, readable, organized, and useful for AI/code review."
+    - "Keep future diagnostic additions extensible through modes and sub-options."
+    - "Avoid ambiguous flags such as --all, --nearest, --radius, --mount, --offspring, and --why."
+
+  final_top_level_commands:
+    - command: "cpc_help"
+      category: "help"
+      output_type: "console"
+      mutates_world: false
+      writes_json: false
+      purpose: "Show command usage, options, examples, and command-specific help."
+
+    - command: "cpc_status"
+      category: "global_status"
+      output_type: "console"
+      mutates_world: false
+      writes_json: false
+      purpose: "Show global CPC/plugin health and subsystem status."
+
+    - command: "cpc_reload_config"
+      category: "config"
+      output_type: "console"
+      mutates_world: false
+      can_change_plugin_state: true
+      writes_json: false
+      purpose: "Validate or reload creaturePrefabCreator.json."
+
+    - command: "cpc_spawn"
+      category: "test_spawning"
+      output_type: "console"
+      mutates_world: true
+      writes_json: false
+      purpose: "Spawn prefabs in front of the player for development testing."
+
+    - command: "cpc_print_console"
+      category: "readable_diagnostics"
+      output_type: "console"
+      mutates_world: false
+      writes_json: false
+      purpose: "Print readable diagnostics directly to the in-game console."
+
+    - command: "cpc_dump_json"
+      category: "structured_diagnostics"
+      output_type: "json_file"
+      mutates_world: false
+      writes_json: true
+      purpose: "Write structured JSON diagnostics to disk."
+
+    - command: "cpc_repair_world"
+      category: "world_repair"
+      output_type: "console"
+      mutates_world: true
+      writes_json: false
+      purpose: "Perform dry-run or confirmed world cleanup/repair actions."
+
+  removed_or_folded_commands:
+    removed_top_level_commands:
+      - old_command: "cpc_inspect"
+        replacement: "cpc_print_console live"
+        reason: "Live object inspection is now a mode of the console output command."
+
+      - old_command: "cpc_dump"
+        replacement: "cpc_dump_json"
+        reason: "JSON output should be explicit in the command name."
+
+      - old_command: "cpc_prefab"
+        replacement: "cpc_print_console prefab / cpc_dump_json prefab"
+        reason: "Prefab diagnostics are now a mode under output-specific commands."
+
+      - old_command: "cpc_generated"
+        replacement: "cpc_print_console prefab --verify-generated / cpc_dump_json prefab --verify-generated"
+        reason: "Generated-prefab diagnostics belong under prefab mode."
+
+      - old_command: "cpc_ai"
+        replacement: "cpc_print_console live --target --ai / cpc_dump_json live --target --ai"
+        reason: "AI diagnostics are one category of live object diagnostics."
+
+      - old_command: "cpc_mount"
+        replacement: "cpc_print_console live --target --debug-mountup / cpc_dump_json live --target --debug-mountup"
+        reason: "MountUp diagnostics are one category of live object diagnostics."
+
+      - old_command: "cpc_offspring"
+        replacement: "cpc_print_console live --target --debug-alltameable / cpc_dump_json live --target --debug-alltameable"
+        reason: "AllTameable/offspring diagnostics are one category of live object diagnostics."
+
+      - old_command: "cpc_runtime"
+        replacement: "cpc_print_console live --target --debug-runtime / cpc_dump_json live --target --debug-runtime / cpc_status --debug-runtime"
+        reason: "Runtime diagnostics are either target-specific or global status."
+
+    removed_flags:
+      - old_flag: "--all"
+        replacement: "No category flags means include all available categories."
+        reason: "Reduces noise and makes default behavior more useful."
+
+      - old_flag: "--nearest"
+        replacement: "Use radius mode, for example: cpc_print_console live 20"
+        reason: "Simplifies target selection."
+
+      - old_flag: "--radius"
+        replacement: "Use positional radius argument in live mode."
+        reason: "Shorter and easier to type."
+
+      - old_flag: "--mount"
+        replacement: "--debug-mountup"
+        reason: "Names the integration being debugged."
+
+      - old_flag: "--offspring"
+        replacement: "--debug-alltameable"
+        reason: "Names the integration/system being debugged."
+
+      - old_flag: "--runtime"
+        replacement: "--debug-runtime"
+        reason: "Consistent with other debug category names."
+
+      - old_flag: "--why"
+        replacement: "--ai"
+        reason: "AI diagnostics should include movement blockers and explanations without needing a separate why flag."
+
+  global_design_rules:
+    output_command_first:
+      rule: >
+        Read-only diagnostics should start with the desired output format.
+        Use cpc_print_console for readable console output and cpc_dump_json for JSON files.
+      good_examples:
+        - "cpc_print_console live --target --debug-runtime"
+        - "cpc_dump_json live --target --debug-runtime"
+      bad_examples:
+        - "cpc_runtime --target"
+        - "cpc_ai --target"
+        - "cpc_mount --target"
+
+    mode_second:
+      rule: >
+        The second token after cpc_print_console or cpc_dump_json should describe
+        the diagnostic subject.
+      approved_modes:
+        - "live"
+        - "prefab"
+        - "world-zdos"
+      future_modes_allowed_if_needed:
+        - "config"
+        - "integrations"
+        - "runtime-rules"
+      syntax_pattern: "<output_command> <mode> [mode arguments] [diagnostic options]"
+
+    keep_scopes_separate:
+      scopes:
+        live:
+          description: "Spawned objects or creatures currently in the loaded world."
+          examples:
+            - "cpc_print_console live --target"
+            - "cpc_dump_json live 20 --debug-runtime"
+
+        prefab:
+          description: "Prefab templates, generated prefab definitions, overrides, and template registration."
+          examples:
+            - "cpc_print_console prefab --name Wolf"
+            - "cpc_dump_json prefab --compare Wolf Bjorn_cub"
+
+        world_zdos:
+          description: "Live or persisted world ZDO records associated with a prefab."
+          examples:
+            - "cpc_print_console world-zdos Bjorn_cub"
+            - "cpc_dump_json world-zdos Bjorn_cub --output bjorn_cub_zdos.json"
+
+        status:
+          description: "Global plugin, mod integration, runtime, and subsystem health."
+          examples:
+            - "cpc_status"
+            - "cpc_status --mods"
+            - "cpc_status --debug-runtime"
+
+        repair:
+          description: "Cleanup or repair actions that can modify world data."
+          examples:
+            - "cpc_repair_world --cleanup-zdos Bjorn_cub --dry-run"
+            - "cpc_repair_world --cleanup-zdos Bjorn_cub --confirm"
+
+    no_category_flags_means_all:
+      rule: >
+        If no diagnostic category flags are specified, include every available
+        diagnostic category for the selected subject.
+      examples:
+        - command: "cpc_print_console live --target"
+          means: "Print all available diagnostics for the crosshair target."
+        - command: "cpc_dump_json live --target"
+          means: "Dump all available diagnostics for the crosshair target."
+        - command: "cpc_print_console prefab --name Wolf"
+          means: "Print normal full prefab-template diagnostics for Wolf."
+
+    category_flags_limit_output:
+      rule: >
+        If one or more diagnostic category flags are specified, include only
+        those selected categories.
+      examples:
+        - command: "cpc_print_console live --target --ai"
+          means: "Only AI diagnostics for the target."
+        - command: "cpc_dump_json live --target --debug-mountup"
+          means: "Only MountUp diagnostics for the target."
+        - command: "cpc_print_console live --target --ai --debug-runtime"
+          means: "Only AI and runtime diagnostics for the target."
+
+    destructive_actions_separate:
+      rule: >
+        cpc_print_console and cpc_dump_json must always be read-only.
+        Anything that can modify world data belongs under cpc_repair_world.
+      destructive_command: "cpc_repair_world"
+      required_confirmation: "--confirm"
+      safe_preview: "--dry-run"
+      default_behavior: "If --confirm is not present, repair/cleanup actions must behave as dry-run."
+
+    json_command_only:
+      rule: >
+        Only cpc_dump_json writes JSON files. cpc_help, cpc_status,
+        cpc_reload_config, cpc_spawn, cpc_print_console, and cpc_repair_world
+        must not write JSON.
+      json_output_folder: "BepInEx/config/CreaturePrefabCreator/dumps/"
+      custom_output_flag: "--output <filename>"
+
+    console_and_json_parallelism:
+      rule: >
+        For every read-only diagnostic mode available in cpc_print_console,
+        there should usually be an equivalent mode and options in cpc_dump_json.
+      examples:
+        - console: "cpc_print_console live --target --debug-runtime"
+          json: "cpc_dump_json live --target --debug-runtime"
+
+        - console: "cpc_print_console prefab --verify-generated --leaks"
+          json: "cpc_dump_json prefab --verify-generated --leaks"
+
+        - console: "cpc_print_console world-zdos Bjorn_cub"
+          json: "cpc_dump_json world-zdos Bjorn_cub"
+
+    verbose_behavior:
+      rule: >
+        --verbose adds detail to the selected command/mode/categories.
+        It should not select a diagnostic category by itself.
+      examples:
+        - command: "cpc_print_console live --target --debug-runtime --verbose"
+          means: "Verbose runtime diagnostics for the target."
+        - command: "cpc_print_console live --target --verbose"
+          means: "All live target diagnostics with verbose detail."
+
+    option_naming:
+      prefer_clear_names:
+        - "--verify-generated"
+        - "--list-generated"
+        - "--debug-runtime"
+        - "--debug-mountup"
+        - "--debug-alltameable"
+        - "--cleanup-zdos"
+      avoid_short_or_ambiguous_names:
+        - "--verify"
+        - "--list"
+        - "--runtime"
+        - "--mount"
+        - "--offspring"
+        - "--cleanup"
+
+    do_not_overload_options:
+      rule: >
+        Do not use the same option to mean different things in different modes.
+        If a subject differs, use a mode name to clarify it.
+      example:
+        correct:
+          - "cpc_print_console live --target --zdo"
+          - "cpc_print_console world-zdos Bjorn_cub"
+        incorrect:
+          - "cpc_print_console --zdos Bjorn_cub"
+
+  command_reference:
+    cpc_help:
+      description: "Shows command help and usage examples in the in-game console."
+      output_type: "console"
+      mutates_world: false
+      writes_json: false
+      examples:
+        - "cpc_help"
+        - "cpc_help --command cpc_print_console"
+        - "cpc_help --command cpc_dump_json"
+        - "cpc_help --command cpc_repair_world"
+      options:
+        "--command <name>": "Shows detailed help for a specific CPC command."
+
+    cpc_status:
+      description: "Shows high-level CPC plugin and subsystem status."
+      output_type: "console"
+      mutates_world: false
+      writes_json: false
+      examples:
+        - "cpc_status"
+        - "cpc_status --verbose"
+        - "cpc_status --mods"
+        - "cpc_status --debug-runtime"
+        - "cpc_status --generated"
+      options:
+        "--verbose": "Shows additional low-level diagnostic details."
+        "--mods": "Lists detected companion mods and integration status, such as Jotunn, MountUpRestored, and AllTameable."
+        "--debug-runtime": "Shows runtime modifier system status, loaded rule count, active tracked creatures, and runtime warnings."
+        "--generated": "Shows generated-prefab subsystem status, generated count, registration health, and warning count."
+
+    cpc_reload_config:
+      description: "Validates or reloads creaturePrefabCreator.json."
+      replaces:
+        - "cpc_config"
+      output_type: "console"
+      mutates_world: false
+      can_change_plugin_state: true
+      writes_json: false
+      examples:
+        - "cpc_reload_config"
+        - "cpc_reload_config --dry-run"
+        - "cpc_reload_config --debug-runtime-only"
+        - "cpc_reload_config --prefabs-only"
+        - "cpc_reload_config --force"
+      options:
+        "--dry-run": "Validates config and reports what would change without applying changes."
+        "--debug-runtime-only": "Reloads only runtime modifier definitions."
+        "--prefabs-only": "Reloads only prefab override and generated-prefab definitions."
+        "--force": "Forces reload even if no file changes are detected."
+      recommended_workflow:
+        - "Run cpc_reload_config --dry-run after editing config."
+        - "If the dry-run result is clean, run cpc_reload_config to apply."
+
+    cpc_spawn:
+      description: "Spawns a prefab in front of the player for testing."
+      output_type: "console"
+      mutates_world: true
+      writes_json: false
+      examples:
+        - "cpc_spawn --prefab Wolf"
+        - "cpc_spawn --prefab Wolf --count 5"
+        - "cpc_spawn --prefab Wolf --level 3 --tamed"
+        - "cpc_spawn --prefab Bjorn --tamed --distance 8"
+      required_options:
+        - "--prefab <name>"
+      options:
+        "--prefab <name>": "Prefab name to spawn."
+        "--count <number>": "Number of instances to spawn."
+        "--level <number>": "Creature level to assign when supported."
+        "--tamed": "Spawns the creature already tamed when supported."
+        "--distance <meters>": "Spawn distance in front of the player."
+      rules:
+        - "Does not output JSON."
+        - "Modifies live world state."
+        - "--prefab <name> should be required."
+        - "Should print a short spawn result to the console."
+
+    cpc_print_console:
+      description: "Main readable diagnostic command."
+      output_type: "console"
+      mutates_world: false
+      writes_json: false
+      syntax: "cpc_print_console <mode> [mode arguments] [diagnostic options]"
+      modes:
+        live:
+          description: "Diagnostics for spawned creatures or objects currently in the world."
+          examples:
+            - "cpc_print_console live --target"
+            - "cpc_print_console live --target --ai"
+            - "cpc_print_console live --target --debug-runtime"
+            - "cpc_print_console live --target --ai --debug-runtime"
+            - "cpc_print_console live --target --debug-mountup"
+            - "cpc_print_console live --target --debug-alltameable"
+            - "cpc_print_console live --target --zdo"
+            - "cpc_print_console live 20"
+            - "cpc_print_console live 50 --ai --debug-runtime"
+          selectors:
+            "--target": "Inspect the creature or object under the player's crosshair."
+            "<radius in meters>": "Inspect valid CPC-relevant live objects within radius."
+          selector_rules:
+            - "--target and radius mode are mutually exclusive."
+            - "Valid: cpc_print_console live --target"
+            - "Valid: cpc_print_console live 20"
+            - "Invalid: cpc_print_console live --target 20"
+          diagnostic_options:
+            "--ai": "Shows AI state, movement state, enabled AI components, command state, and likely movement blockers."
+            "--debug-runtime": "Shows runtime modifiers affecting the creature, including matching rules, conditions, effects, and restore state."
+            "--debug-mountup": "Shows saddle, rider, MountUp, mount point, Player.IsRiding, and CPC mount-related AI suppression info."
+            "--debug-alltameable": "Shows baby, growup, adult target, AllTameable mapping, Procreation, OffspringGrowup, and tame state info."
+            "--zdo": "Shows ZDO, ZNetView, ownership, prefab hash, local ownership, and network sync information."
+            "--generated": "Shows generated-prefab info related to the inspected live object when applicable."
+            "--verbose": "Shows additional low-level diagnostic details."
+          default_category_behavior: "If no diagnostic category is specified, include every available category."
+          radius_output_behavior:
+            summary: >
+              Radius mode should print a compact summary by default to avoid console spam.
+            verbose: >
+              If --verbose is present, include expanded details per object.
+            recommended_summary_fields:
+              - "index"
+              - "object name"
+              - "prefab name"
+              - "distance"
+              - "position"
+              - "tamed state"
+              - "level"
+              - "warning count"
+              - "quick diagnostic status"
+
+        prefab:
+          description: "Diagnostics for prefab templates, generated prefab definitions, overrides, and registration."
+          replaces:
+            - "cpc_prefab"
+            - "cpc_generated"
+          examples:
+            - "cpc_print_console prefab --name Wolf"
+            - "cpc_print_console prefab --find wolf"
+            - "cpc_print_console prefab --compare Wolf Bjorn_cub"
+            - "cpc_print_console prefab --name Bjorn_cub --chain"
+            - "cpc_print_console prefab --name Bjorn_cub --generated"
+            - "cpc_print_console prefab --name Bjorn_cub --overrides"
+            - "cpc_print_console prefab --list-generated"
+            - "cpc_print_console prefab --verify-generated"
+            - "cpc_print_console prefab --verify-generated --leaks"
+            - "cpc_print_console prefab --verify-generated --verbose"
+          options:
+            "--name <name>": "Inspects a specific prefab template."
+            "--find <partial>": "Searches loaded prefab names by partial text."
+            "--compare <a> <b>": "Compares two prefab templates side by side."
+            "--chain": "Shows generated-prefab inheritance, source prefab, generated prefab, and adult target chain for the selected prefab."
+            "--generated": "Shows generated-prefab information associated with the selected prefab."
+            "--overrides": "Shows CPC override information associated with the selected prefab."
+            "--list-generated": "Lists all configured and registered generated prefabs."
+            "--verify-generated": "Verifies generated-prefab registration, named prefab map entries, hash status, template status, and component expectations."
+            "--leaks": "Adds leaked-template detection to generated-prefab verification."
+            "--verbose": "Shows additional component, registration, config, marker, and warning details."
+          action_rules:
+            - "Use only one primary prefab action/selector at a time unless the combination is explicitly supported."
+            - "--chain, --generated, and --overrides require --name <name>."
+            - "--leaks should be used with --verify-generated."
+            - "--compare <a> <b> should not be mixed with --name unless explicitly implemented."
+
+        world_zdos:
+          mode_name: "world-zdos"
+          description: "Read-only world ZDO lookup by prefab."
+          examples:
+            - "cpc_print_console world-zdos Bjorn_cub"
+            - "cpc_print_console world-zdos Bjorn_cub --verbose"
+          arguments:
+            "<prefab>": "Prefab name whose live or persisted world ZDOs should be listed."
+          options:
+            "--verbose": "Shows additional ZDO details and warning explanations."
+          rules:
+            - "Read-only."
+            - "Does not clean up or modify ZDOs."
+            - "Cleanup belongs under cpc_repair_world."
+
+    cpc_dump_json:
+      description: "Main structured JSON diagnostic command."
+      output_type: "json_file"
+      mutates_world: false
+      writes_json: true
+      syntax: "cpc_dump_json <mode> [mode arguments] [diagnostic options] [--output <filename>]"
+      output_folder: "BepInEx/config/CreaturePrefabCreator/dumps/"
+      global_options:
+        "--output <filename>": "Writes the JSON dump using a custom filename."
+      modes:
+        live:
+          description: "Structured JSON output about spawned creatures or objects currently in the world."
+          examples:
+            - "cpc_dump_json live --target"
+            - "cpc_dump_json live --target --ai"
+            - "cpc_dump_json live --target --debug-runtime"
+            - "cpc_dump_json live --target --ai --debug-runtime"
+            - "cpc_dump_json live --target --debug-mountup"
+            - "cpc_dump_json live --target --debug-alltameable"
+            - "cpc_dump_json live --target --zdo"
+            - "cpc_dump_json live --target --output bjorn_test_01.json"
+            - "cpc_dump_json live 20"
+            - "cpc_dump_json live 20 --debug-runtime"
+            - "cpc_dump_json live 50 --ai --debug-runtime"
+            - "cpc_dump_json live 20 --debug-runtime --output nearby_runtime.json"
+          selectors:
+            "--target": "Dump the creature or object under the player's crosshair."
+            "<radius in meters>": "Dump valid CPC-relevant live objects within radius."
+          selector_rules:
+            - "--target and radius mode are mutually exclusive."
+            - "Valid: cpc_dump_json live --target"
+            - "Valid: cpc_dump_json live 20"
+            - "Invalid: cpc_dump_json live --target 20"
+          diagnostic_options:
+            "--ai": "Includes AI state, movement state, and movement blocker diagnostics."
+            "--debug-runtime": "Includes runtime modifier information."
+            "--debug-mountup": "Includes mount, saddle, rider, MountUp, and CPC mount suppression diagnostics."
+            "--debug-alltameable": "Includes offspring, growup, breeding, AllTameable, and adult target diagnostics."
+            "--zdo": "Includes ZDO, ZNetView, ownership, prefab hash, local ownership, and network sync diagnostics."
+            "--generated": "Includes generated-prefab diagnostics related to the inspected live object when applicable."
+            "--verbose": "Includes additional low-level diagnostic details."
+          default_category_behavior: "If no diagnostic category is specified, include every available category."
+
+        prefab:
+          description: "Structured JSON output about prefab templates and generated-prefab diagnostics."
+          examples:
+            - "cpc_dump_json prefab --name Wolf"
+            - "cpc_dump_json prefab --find wolf"
+            - "cpc_dump_json prefab --compare Wolf Bjorn_cub"
+            - "cpc_dump_json prefab --name Bjorn_cub --chain"
+            - "cpc_dump_json prefab --name Bjorn_cub --generated"
+            - "cpc_dump_json prefab --name Bjorn_cub --overrides"
+            - "cpc_dump_json prefab --list-generated"
+            - "cpc_dump_json prefab --verify-generated"
+            - "cpc_dump_json prefab --verify-generated --leaks"
+            - "cpc_dump_json prefab --verify-generated --output generated_verify.json"
+          options:
+            "--name <name>": "Dumps diagnostics for a specific prefab template."
+            "--find <partial>": "Dumps search results for loaded prefab names matching partial text."
+            "--compare <a> <b>": "Dumps a prefab comparison report."
+            "--chain": "Dumps generated-prefab inheritance, source prefab, generated prefab, and adult target chain for the selected prefab."
+            "--generated": "Dumps generated-prefab information associated with the selected prefab."
+            "--overrides": "Dumps CPC override information associated with the selected prefab."
+            "--list-generated": "Dumps all configured and registered generated prefabs."
+            "--verify-generated": "Dumps generated-prefab registration, named prefab map entries, hash status, template status, and component verification results."
+            "--leaks": "Adds leaked-template detection to generated-prefab verification."
+            "--verbose": "Includes additional component, registration, config, marker, and warning details."
+            "--output <filename>": "Writes the JSON dump using a custom filename."
+          action_rules:
+            - "Use only one primary prefab action/selector at a time unless the combination is explicitly supported."
+            - "--chain, --generated, and --overrides require --name <name>."
+            - "--leaks should be used with --verify-generated."
+
+        world_zdos:
+          mode_name: "world-zdos"
+          description: "Structured JSON output about live or persisted world ZDOs associated with a prefab."
+          examples:
+            - "cpc_dump_json world-zdos Bjorn_cub"
+            - "cpc_dump_json world-zdos Bjorn_cub --verbose"
+            - "cpc_dump_json world-zdos Bjorn_cub --output bjorn_cub_zdos.json"
+          arguments:
+            "<prefab>": "Prefab name whose live or persisted world ZDOs should be dumped."
+          options:
+            "--verbose": "Includes additional ZDO details and warning explanations."
+            "--output <filename>": "Writes the JSON dump using a custom filename."
+          rules:
+            - "Read-only."
+            - "Does not clean up or modify ZDOs."
+
+      json_format_requirements:
+        pretty_printed: true
+        indentation_spaces: 2
+        stable_field_ordering: true
+        no_raw_unity_object_graphs: true
+        no_circular_references: true
+        enum_values_as_strings: true
+        vectors_as_objects: true
+        colors_as_objects_and_hex_when_useful: true
+        timestamps_iso_8601: true
+        include_schema_version: true
+        include_plugin_version: true
+        include_dump_type: true
+        include_warnings_array: true
+        include_suggested_commands_array: true
+
+    cpc_repair_world:
+      description: "World-state cleanup and repair command."
+      output_type: "console"
+      mutates_world: true
+      writes_json: false
+      syntax: "cpc_repair_world [repair options] [safety options]"
+      examples:
+        - "cpc_repair_world --cleanup-zdos Bjorn_cub --dry-run"
+        - "cpc_repair_world --cleanup-zdos Bjorn_cub --confirm"
+        - "cpc_repair_world --orphans --dry-run"
+        - "cpc_repair_world --orphans --confirm"
+        - "cpc_repair_world --orphans --dry-run --verbose"
+      options:
+        "--cleanup-zdos <prefab>": "Removes orphaned or invalid ZDOs associated with a prefab."
+        "--orphans": "Finds or cleans up orphaned CPC/generated-prefab ZDOs globally."
+        "--dry-run": "Simulates cleanup or repair actions without changing the world."
+        "--confirm": "Confirms destructive world cleanup operations."
+        "--verbose": "Shows detailed cleanup reasoning, affected ZDOs, and warning explanations."
+      safety_rules:
+        - "Destructive actions require --confirm."
+        - "Cleanup commands should default to dry-run behavior unless --confirm is present."
+        - "Do not use cpc_repair_world for read-only diagnostics."
+        - "Read-only diagnostics belong under cpc_print_console or cpc_dump_json."
+        - "Before deleting or changing anything, print affected ZDO count, prefab names, positions, owners, and reason."
+
+  common_workflows:
+    inspect_crosshair_target_console:
+      command: "cpc_print_console live --target"
+      purpose: "Print every available diagnostic category for the object under the crosshair."
+
+    dump_crosshair_target_json:
+      command: "cpc_dump_json live --target"
+      purpose: "Write a full JSON dump for the object under the crosshair."
+
+    check_target_ai:
+      command: "cpc_print_console live --target --ai"
+      purpose: "Check AI state and movement blockers."
+
+    check_target_runtime_modifiers:
+      command: "cpc_print_console live --target --debug-runtime"
+      purpose: "Check runtime modifiers affecting the crosshair target."
+
+    check_target_mountup:
+      command: "cpc_print_console live --target --debug-mountup"
+      purpose: "Check saddle, rider, and MountUp-related state."
+
+    check_target_alltameable:
+      command: "cpc_print_console live --target --debug-alltameable"
+      purpose: "Check AllTameable, baby, growup, and adult-target state."
+
+    check_prefab_template:
+      command: "cpc_print_console prefab --name Wolf"
+      purpose: "Inspect the Wolf prefab template."
+
+    compare_prefab_templates:
+      command: "cpc_print_console prefab --compare Wolf Bjorn_cub"
+      purpose: "Compare two prefab templates."
+
+    verify_generated_prefabs:
+      command: "cpc_print_console prefab --verify-generated"
+      purpose: "Check generated-prefab registration and template health."
+
+    verify_generated_prefabs_with_leaks:
+      command: "cpc_print_console prefab --verify-generated --leaks"
+      purpose: "Check generated-prefab registration and leaked templates."
+
+    dump_generated_verification_json:
+      command: "cpc_dump_json prefab --verify-generated --leaks --output generated_verify.json"
+      purpose: "Write generated-prefab verification with leak detection to JSON."
+
+    lookup_world_zdos:
+      command: "cpc_print_console world-zdos Bjorn_cub"
+      purpose: "List live or persisted ZDOs associated with Bjorn_cub."
+
+    dry_run_zdo_cleanup:
+      command: "cpc_repair_world --cleanup-zdos Bjorn_cub --dry-run"
+      purpose: "Preview cleanup of broken or orphaned ZDOs for Bjorn_cub."
+
+    confirmed_zdo_cleanup:
+      command: "cpc_repair_world --cleanup-zdos Bjorn_cub --confirm"
+      purpose: "Actually clean up broken or orphaned ZDOs for Bjorn_cub."
+```

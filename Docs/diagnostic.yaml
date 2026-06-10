@@ -1,0 +1,167 @@
+issue:
+  title: "ZDO 1:174934 not used spam + inactive template in scene causing sync issues"
+  timestamp: "2026-06-08T00:36:52"
+  status: "open"
+
+observations_from_latest_log:
+  - event: "MountUp patches successfully applied"
+    log_line: "[CreaturePrefabCreator] MountUp detected; installed generated-prefab guard patches."
+    timing: "00:36:26 (delayed retry worked)"
+    status: "fixed"
+
+  - event: "Templates verified inactive"
+    log_lines:
+      - "[CreaturePrefabCreator] Verified ZNetScene lookup for generated prefab Bjorn_cub."
+      - "[CreaturePrefabCreator]   activeSelf=False, activeInHierarchy=False"
+    status: "expected_behavior"
+
+  - event: "ZDO not used spam"
+    first_occurrence: "00:36:52"
+    frequency: "Every frame (~100+ times/sec)"
+    message_pattern: "ZDO 1:174934 not used when creating object Bjorn_cub"
+    root_cause_analysis: |
+      ZNetScene is trying to instantiate a Bjorn_cub for an existing ZDO (ID 1:174934) from the world save.
+      The instantiated object does not properly consume/attach the ZDO, causing the warning to repeat.
+      This likely happens because:
+      1. The template is an inactive GameObject in the scene root with a ZNetView
+      2. When ZNetScene clones the prefab for the ZDO, the ZNetView on the clone fails to initialize properly
+      3. The clone might be missing components or have corrupted references because the template was modified
+      4. The ZDO persists and ZNetScene retries every frame
+
+  - event: "No visible AllTameable NRE"
+    status: "potentially_fixed_or_drowned_by_spam"
+
+  - event: "No visible MountUp NRE"
+    status: "potentially_fixed_or_drowned_by_spam"
+
+plugin_load_order:
+  - plugin: "CreaturePrefabCreator"
+    order: 13
+    event: "Awake -> registers configs, hooks OnVanillaPrefabsAvailable"
+  - plugin: "AllTameable-Overhaul"
+    order: 49
+    event: "Awake -> loads tame list, patches Procreate, runs InitProcPrefabs"
+  - plugin: "Mount Up Restored"
+    order: 50
+    event: "Awake -> patches MountUp components, patches AllTameable"
+
+registration_flow:
+  step_1:
+    event: "CreaturePrefabCreator.OnVanillaPrefabsAvailable"
+    action: "GeneratedPrefabManager.GenerateAll called"
+  step_2:
+    event: "GenerateConfiguredPrefab for Bjorn_cub"
+    source_prefab: "Bjorn"
+    clone_activeSelf_before_jotunn: true
+    clone_parented_under: "CreaturePrefabCreator_TempContainer_Bjorn_cub (inactive)"
+    action: "Jotunn CustomPrefab(newPrefab, fixReference: true); PrefabManager.Instance.AddPrefab(...)"
+    log: "Registered 'Bjorn_cub' with Jotunn (activeSelf=true)."
+  step_3:
+    event: "finally block cleanup"
+    action: "newPrefab.SetActive(false); newPrefab.transform.SetParent(null, false);"
+    note: "Template is now an inactive root GameObject in the scene. NOT destroyed."
+  step_4:
+    event: "DelayedRegistrationVerification coroutine"
+    action: "Finds template in ZNetScene, logs activeSelf=False, activeInHierarchy=False"
+    note: "Template is discoverable but inactive. No activeSelf=true force applied (was removed)."
+  step_5:
+    event: "MountUpCompatibilityPatch retry"
+    timing: "00:36:26"
+    result: "SUCCESS - MountUp.Mountable found, patches applied"
+  step_6:
+    event: "World load / ZNetScene Start"
+    timing: "00:36:46"
+    action: "ZNetScene loads saved ZDOs, tries to instantiate objects"
+    problem: "ZDO 1:174934 (Bjorn_cub) cannot properly attach to instantiated object"
+    result: "Endless ZDO-not-used warnings every frame"
+
+code_snippets:
+  GeneratedPrefabManager_cleanup:
+    file: "GeneratedPrefabs/GeneratedPrefabManager.cs"
+    lines: "162-175"
+    current_code: |
+      finally
+      {
+          if (newPrefab != null)
+          {
+              newPrefab.SetActive(false);
+              newPrefab.transform.SetParent(null, false);
+              // NOTE: Do NOT destroy newPrefab here.
+              // It is the registered template; Jotunn/ZNetScene need the live reference.
+          }
+          if (tempContainer != null)
+          {
+              UnityEngine.Object.DestroyImmediate(tempContainer);
+          }
+      }
+    assessment: |
+      Template survives but is left as inactive root GameObject in scene.
+      ZNetScene may treat it as a valid prefab but instantiation from it may fail
+      because inactive templates don't have proper Awake/OnEnable called.
+
+  DelayedRegistrationVerification:
+    file: "GeneratedPrefabs/GeneratedPrefabManager.cs"
+    lines: "188-217"
+    assessment: |
+      No longer forces activeSelf=true. Good.
+      But EnsureZNetSceneRegistration adds the template to ZNetScene.m_prefabs
+      and m_namedPrefabs. This means ZNetScene WILL use it for instantiation.
+
+root_causes:
+  - id: "RC-ZDO-SPAM"
+    severity: "critical"
+    title: "Inactive template causes ZDO sync failure on world load"
+    description: |
+      The Bjorn_cub template is an inactive GameObject in the scene root.
+      It has a ZNetView component (cloned from Bjorn source).
+      ZNetScene discovers it via m_prefabs / m_namedPrefabs.
+      When loading a world with a saved Bjorn_cub ZDO (ID 1:174934),
+      ZNetScene instantiates from the template but the resulting object's
+      ZNetView doesn't properly consume the ZDO, causing endless retry warnings.
+    possible_reasons:
+      - "Inactive template's ZNetView has no valid ZDO data when cloned"
+      - "Template's ZNetView.m_zdo is null or uninitialized"
+      - "Clone inherits template's ZNetView state but ZNetScene expects to bind a new ZDO"
+      - "The template itself might be getting instantiated instead of a proper copy"
+    impact:
+      - "Log spam (~100 warnings/sec)"
+      - "Performance degradation"
+      - "Bjorn_cub entities from save may not load correctly"
+      - "Potential save corruption or entity loss"
+
+fixes_required:
+  - id: "FIX-ZDO-SPAM"
+    priority: "critical"
+    file: "GeneratedPrefabs/GeneratedPrefabManager.cs"
+    action: |
+      Ensure the template is a proper prefab asset, not a live inactive scene object.
+      Options:
+      1. Use PrefabUtility to create a true prefab asset (only works in Editor)
+      2. Create the template under a DontDestroyOnLoad inactive container
+      3. Remove ZNetView from the template and let ZNetScene add it when spawning
+      4. Use Jotunn's CustomPrefab without keeping the live GameObject in scene
+      5. Mark the template with hideFlags = HideFlags.HideAndDontSave
+    recommended_approach: |
+      Option 2 + 5: Create a persistent inactive container under DontDestroyOnLoad,
+      parent all templates under it, and set hideFlags to prevent scene pollution.
+      This keeps templates alive but hidden from ZNetScene's object discovery.
+
+  - id: "FIX-ZNETVIEW-TEMPLATE"
+    priority: "high"
+    file: "GeneratedPrefabs/GeneratedPrefabManager.cs"
+    action: |
+      Consider removing ZNetView from the template after registration,
+      OR ensure the ZNetView is in a clean state (m_zdo = null, m_viewID = 0)
+      so clones get a fresh ZNetView.
+    note: |
+      In Valheim, prefab templates in the game files DO have ZNetView components,
+      but they are in asset bundles, not live scene objects.
+      Our live-scene-template approach may be fundamentally incompatible with
+      how ZNetScene expects prefabs to work.
+
+notes:
+  - "MountUp guard patches ARE working with delayed retry."
+  - "AllTameable 'could not find prefab' warning is cosmetic at startup; resolves after ZNetScene loads."
+  - "The ZDO spam is the most critical remaining issue."
+  - "Previous fixes (no DestroyImmediate, no activeSelf force, delayed MountUp retry) are correct."
+  - "The fundamental architecture of using a live inactive GameObject as a prefab template may need revision."

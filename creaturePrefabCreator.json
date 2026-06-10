@@ -1,0 +1,158 @@
+{
+  "generatedPrefabs": [
+    {
+      "sourcePrefab": "Bjorn",
+      "newPrefab": "Bjorn_cub",
+      "enabled": true,
+      "adultPrefab": "Bjorn",
+      "displayName": "Bear Cub",
+      "scale": 0.5,
+      "growIntoAdult": true,
+      "growTimeSeconds": 6000,
+      "preserveTamed": true,
+      "preserveLevel": true,
+      "preserveOwner": true,
+      "preserveName": false,
+      "healthMultiplier": 0.2,
+      "damageMultiplier": 0.1,
+      "clearDeathEffects": false,
+      "copyDeathEffectsFrom": null,
+      "deathEffectScaleMultiplier": null
+    },
+    {
+      "sourcePrefab": "Wolf",
+      "newPrefab": "Wolf_pup",
+      "enabled": false,
+      "adultPrefab": "Wolf",
+      "displayName": "Wolf Pup",
+      "scale": 0.4,
+      "growIntoAdult": true,
+      "growTimeSeconds": 1800,
+      "preserveTamed": true,
+      "preserveLevel": true,
+      "preserveOwner": true,
+      "preserveName": false,
+      "healthMultiplier": 0.3,
+      "damageMultiplier": 0.2,
+      "clearDeathEffects": false,
+      "copyDeathEffectsFrom": null,
+      "deathEffectScaleMultiplier": null
+    },
+    {
+      "sourcePrefab": "Lox",
+      "newPrefab": "Lox_mini",
+      "enabled": false,
+      "adultPrefab": "Lox",
+      "displayName": "Mini Lox",
+      "scale": 0.3,
+      "growIntoAdult": false,
+      "growTimeSeconds": 3600,
+      "preserveTamed": true,
+      "preserveLevel": true,
+      "preserveOwner": true,
+      "preserveName": false,
+      "healthMultiplier": 0.4,
+      "damageMultiplier": 0.3,
+      "clearDeathEffects": false,
+      "copyDeathEffectsFrom": null,
+      "deathEffectScaleMultiplier": null
+    },
+    {
+      "sourcePrefab": "Boar",
+      "newPrefab": "Boar_piglet",
+      "enabled": false,
+      "adultPrefab": "Boar",
+      "displayName": "Piglet",
+      "scale": 0.25,
+      "growIntoAdult": true,
+      "growTimeSeconds": 600,
+      "preserveTamed": true,
+      "preserveLevel": true,
+      "preserveOwner": true,
+      "preserveName": false,
+      "healthMultiplier": 0.15,
+      "damageMultiplier": 0.05,
+      "clearDeathEffects": false,
+      "copyDeathEffectsFrom": null,
+      "deathEffectScaleMultiplier": null
+    }
+  ],
+  "prefabOverrides": [
+    {
+      "targetPrefab": "Wolf",
+      "enabled": true,
+      "displayName": "Dire Wolf",
+      "scale": 1.5,
+      "applyToExistingSpawnedCreatures": true,
+      "propagateToGeneratedVariants": true,
+      "healthMultiplier": null,
+      "damageMultiplier": null,
+      "clearDeathEffects": false,
+      "copyDeathEffectsFrom": null,
+      "deathEffectScaleMultiplier": null
+    },
+    {
+      "targetPrefab": "Wolf_cub",
+      "enabled": true,
+      "displayName": "Dire Wolf Pup",
+      "scale": 1.0,
+      "applyToExistingSpawnedCreatures": false,
+      "propagateToGeneratedVariants": false,
+      "healthMultiplier": null,
+      "damageMultiplier": null,
+      "clearDeathEffects": false,
+      "copyDeathEffectsFrom": "Wolf",
+      "deathEffectScaleMultiplier": 0.5
+    },
+    {
+      "targetPrefab": "Boar",
+      "enabled": false,
+      "displayName": "Giant Boar",
+      "scale": 2.0,
+      "applyToExistingSpawnedCreatures": false,
+      "propagateToGeneratedVariants": true,
+      "healthMultiplier": 3.0,
+      "damageMultiplier": 2.0,
+      "clearDeathEffects": false,
+      "copyDeathEffectsFrom": null,
+      "deathEffectScaleMultiplier": null
+    },
+    {
+      "targetPrefab": "Bjorn",
+      "enabled": false,
+      "displayName": "",
+      "scale": 1.0,
+      "applyToExistingSpawnedCreatures": false,
+      "propagateToGeneratedVariants": true,
+      "healthMultiplier": null,
+      "damageMultiplier": null,
+      "clearDeathEffects": false,
+      "copyDeathEffectsFrom": null,
+      "deathEffectScaleMultiplier": null
+    },
+    {
+      "targetPrefab": "CreatureWithBrokenDeath",
+      "enabled": false,
+      "displayName": "",
+      "scale": 1.0,
+      "applyToExistingSpawnedCreatures": false,
+      "propagateToGeneratedVariants": false,
+      "healthMultiplier": null,
+      "damageMultiplier": null,
+      "clearDeathEffects": true,
+      "copyDeathEffectsFrom": null,
+      "deathEffectScaleMultiplier": null
+    }
+  ],
+  "runtimeModifiers": [
+    {
+      "targetPrefab": "Wolf",
+      "conditions": {
+        "saddled": true
+      },
+      "effects": {
+        "disableAI": true
+      }
+    }
+  ]
+}

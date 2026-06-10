@@ -1,0 +1,350 @@
+================================================================================
+    Creature Prefab Creator - ALL OVERRIDE PARAMETERS REFERENCE
+================================================================================
+
+This document lists every available parameter for creature prefab overrides in
+the Creature Prefab Creator mod. Parameters are organized by configuration type.
+
+================================================================================
+SECTION 1: PREFAB OVERRIDES (prefabOverrides[])
+================================================================================
+
+Used to modify EXISTING vanilla or modded creature prefabs.
+
+---
+ENABLED
+    Parameter: enabled
+    Type: boolean
+    Default: true
+    Description: Whether this override entry is active.
+    Example: true
+
+---
+TARGET PREFAB (REQUIRED)
+    Parameter: targetPrefab
+    Type: string
+    Default: (none)
+    Description: The name of the existing prefab to modify.
+    Example: "Wolf"
+
+---
+DISPLAY NAME
+    Parameter: displayName
+    Type: string
+    Default: ""
+    Description: Changes the creature's in-game name. Empty string = no change.
+    Example: "Dire Wolf"
+
+---
+SCALE
+    Parameter: scale
+    Type: float
+    Default: 1.0
+    Valid Range: > 0
+    Description: Multiplier for the creature's model size (relative to original).
+    Example: 2.0 (double size), 0.5 (half size)
+
+---
+APPLY TO EXISTING SPAWNED CREATURES
+    Parameter: applyToExistingSpawnedCreatures
+    Type: boolean
+    Default: false
+    Description: Whether to scale creatures already spawned in the world.
+                 NOTE: Currently not implemented (affects future spawns only).
+    Example: false
+
+---
+PROPAGATE TO GENERATED VARIANTS
+    Parameter: propagateToGeneratedVariants
+    Type: boolean
+    Default: true
+    Description: If true, generated prefabs using this as their source will
+                 inherit this scale multiplier.
+    Example: true
+
+---
+HEALTH MULTIPLIER
+    Parameter: healthMultiplier
+    Type: float (nullable)
+    Default: null
+    Valid Range: 0.01 to 100 (0 or 1 = no change)
+    Description: Multiplies the creature's base health. Set to null to skip.
+    Example: 2.5
+
+---
+DAMAGE MULTIPLIER
+    Parameter: damageMultiplier
+    Type: float (nullable)
+    Default: null
+    Valid Range: 0.01 to 100 (0 or 1 = no change)
+    Description: Multiplies all damage dealt by this creature's attacks.
+                 Affects: damage, blunt, slash, pierce, chop, pickaxe, fire,
+                 frost, lightning, poison, spirit damage types.
+    Example: 1.5
+
+---
+CLEAR DEATH EFFECTS
+    Parameter: clearDeathEffects
+    Type: boolean
+    Default: false
+    Description: Removes all death effects (including ragdoll) from the creature.
+                 Useful for fixing broken vanilla death effects (e.g., Wolf_cub).
+    Example: true
+
+---
+COPY DEATH EFFECTS FROM
+    Parameter: copyDeathEffectsFrom
+    Type: string (nullable)
+    Default: null
+    Description: Copies death effects from another prefab. Useful for giving
+                 baby creatures the death effects of their adult versions.
+    Example: "Wolf" (copies Wolf's death effects to Wolf_cub)
+
+---
+DEATH EFFECT SCALE MULTIPLIER
+    Parameter: deathEffectScaleMultiplier
+    Type: float (nullable)
+    Default: null
+    Description: Scales the death effect ragdolls. Usually matches 'scale'.
+    Example: 0.35
+
+
+================================================================================
+SECTION 2: GENERATED PREFABS (generatedPrefabs[])
+================================================================================
+
+Used to CREATE NEW creature prefabs (e.g., baby versions of adults).
+
+---
+ENABLED
+    Parameter: enabled
+    Type: boolean
+    Default: true
+    Description: Whether this generated prefab entry is active.
+    Example: true
+
+---
+SOURCE PREFAB (REQUIRED)
+    Parameter: sourcePrefab
+    Type: string
+    Default: (none)
+    Description: The vanilla/mod prefab to clone as the base.
+    Example: "Bjorn"
+
+---
+NEW PREFAB (REQUIRED)
+    Parameter: newPrefab
+    Type: string
+    Default: (none)
+    Description: The unique name for the new prefab being created.
+    Example: "Bjorn_cub"
+
+---
+ADULT PREFAB
+    Parameter: adultPrefab
+    Type: string
+    Default: ""
+    Description: The prefab this creature will grow into (if growIntoAdult=true).
+    Example: "Bjorn"
+
+---
+DISPLAY NAME
+    Parameter: displayName
+    Type: string
+    Default: ""
+    Description: The in-game name for this creature.
+    Example: "Bjorn Cub"
+
+---
+SCALE
+    Parameter: scale
+    Type: float
+    Default: 0.35
+    Valid Range: > 0
+    Description: The model scale for this creature (relative to source).
+    Example: 0.35 (35% of adult size)
+
+---
+GROW INTO ADULT
+    Parameter: growIntoAdult
+    Type: boolean
+    Default: true
+    Description: Whether this creature transforms into adultPrefab after growTime.
+    Example: true
+
+---
+GROW TIME SECONDS
+    Parameter: growTimeSeconds
+    Type: float
+    Default: 6000
+    Valid Range: > 0 (if growIntoAdult=true)
+    Description: Time in seconds before the creature grows into an adult.
+    Example: 6000 (100 minutes = ~1.67 hours)
+
+---
+PRESERVE TAMED
+    Parameter: preserveTamed
+    Type: boolean
+    Default: true
+    Description: Keeps tamed status when the creature grows up.
+    Example: true
+
+---
+PRESERVE LEVEL
+    Parameter: preserveLevel
+    Type: boolean
+    Default: true
+    Description: Keeps creature level when it grows up.
+    Example: true
+
+---
+PRESERVE OWNER
+    Parameter: preserveOwner
+    Type: boolean
+    Default: true
+    Description: Keeps the ownership/taming ownership when creature grows up.
+    Example: true
+
+---
+PRESERVE NAME
+    Parameter: preserveName
+    Type: boolean
+    Default: false
+    Description: Keeps any custom name given to the creature when it grows up.
+    Example: false
+
+---
+HEALTH MULTIPLIER
+    Parameter: healthMultiplier
+    Type: float (nullable)
+    Default: null
+    Valid Range: 0.01 to 100 (0 or 1 = no change)
+    Description: Multiplies the creature's base health. Set to null to skip.
+    Example: 0.5 (baby has half the health)
+
+---
+DAMAGE MULTIPLIER
+    Parameter: damageMultiplier
+    Type: float (nullable)
+    Default: null
+    Valid Range: 0.01 to 100 (0 or 1 = no change)
+    Description: Multiplies all damage dealt by this creature's attacks.
+                 Affects all damage types.
+    Example: 0.3 (baby deals 30% damage)
+
+---
+CLEAR DEATH EFFECTS
+    Parameter: clearDeathEffects
+    Type: boolean
+    Default: false
+    Description: Removes all death effects from the creature.
+    Example: false
+
+---
+COPY DEATH EFFECTS FROM
+    Parameter: copyDeathEffectsFrom
+    Type: string (nullable)
+    Default: null
+    Description: Copies death effects from another prefab.
+    Example: "Bjorn"
+
+---
+DEATH EFFECT SCALE MULTIPLIER
+    Parameter: deathEffectScaleMultiplier
+    Type: float (nullable)
+    Default: null
+    Description: Scales the death effect ragdolls.
+    Example: 0.35
+
+
+================================================================================
+SECTION 3: QUICK REFERENCE - ALL PARAMETERS ALPHABETICALLY
+================================================================================
+
+Generated Prefabs Only:
+- adultPrefab           (string)   - Target prefab when growing up
+- growIntoAdult         (boolean)  - Enable growth system
+- growTimeSeconds       (float)    - Seconds before growing up
+- newPrefab             (string)   - Unique name for the new creature
+- preserveLevel         (boolean)  - Keep level on growth
+- preserveName          (boolean)  - Keep custom name on growth
+- preserveOwner         (boolean)  - Keep owner on growth
+- preserveTamed         (boolean)  - Keep tamed status on growth
+- sourcePrefab          (string)   - Base prefab to clone
+
+Prefab Overrides Only:
+- applyToExistingSpawnedCreatures (boolean) - Affect already spawned creatures
+- propagateToGeneratedVariants      (boolean) - Pass scale to child variants
+- targetPrefab                    (string)  - Prefab to modify
+
+Shared (Both Config Types):
+- clearDeathEffects           (boolean)      - Remove death effects
+- copyDeathEffectsFrom        (string/null)  - Source for death effects copy
+- damageMultiplier            (float/null)   - Damage output multiplier
+- deathEffectScaleMultiplier  (float/null)   - Scale death effect ragdolls
+- displayName                 (string)       - In-game creature name
+- enabled                     (boolean)      - Activate this entry
+- healthMultiplier            (float/null)   - Health multiplier
+- scale                       (float)        - Model size multiplier
+
+
+================================================================================
+SECTION 4: EXAMPLE CONFIGURATION FILE
+================================================================================
+
+{
+  "generatedPrefabs": [
+    {
+      "enabled": true,
+      "sourcePrefab": "Bjorn",
+      "newPrefab": "Bjorn_cub",
+      "adultPrefab": "Bjorn",
+      "displayName": "Bjorn Cub",
+      "scale": 0.35,
+      "growIntoAdult": true,
+      "growTimeSeconds": 6000,
+      "preserveTamed": true,
+      "preserveLevel": true,
+      "preserveOwner": true,
+      "preserveName": false,
+      "healthMultiplier": 0.5,
+      "damageMultiplier": 0.3,
+      "clearDeathEffects": false,
+      "copyDeathEffectsFrom": "Bjorn",
+      "deathEffectScaleMultiplier": 0.35
+    }
+  ],
+  "prefabOverrides": [
+    {
+      "enabled": true,
+      "targetPrefab": "Wolf",
+      "displayName": "Dire Wolf",
+      "scale": 1.5,
+      "applyToExistingSpawnedCreatures": false,
+      "propagateToGeneratedVariants": true,
+      "healthMultiplier": 2.0,
+      "damageMultiplier": 1.5,
+      "clearDeathEffects": false,
+      "copyDeathEffectsFrom": null,
+      "deathEffectScaleMultiplier": null
+    }
+  ]
+}
+
+
+================================================================================
+NOTES
+================================================================================
+
+- Config file location: BepInEx/config/CreaturePrefabCreator/creaturePrefabCreator.json
+- All nullable float parameters accept either a number or null
+- Damage multipliers affect ALL damage types: damage, blunt, slash, pierce,
+  chop, pickaxe, fire, frost, lightning, poison, spirit
+- The mod automatically strips Procreation components from generated prefabs
+  to prevent infinite breeding chains and AllTameable compatibility issues
+- Generated prefabs automatically get an OffspringGrowup component if 
+  growIntoAdult is enabled
+
+================================================================================
+                           END OF PARAMETER LIST
+================================================================================

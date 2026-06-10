@@ -1,0 +1,63 @@
+{
+  "folders": [
+    {
+      "name": "CreaturePrefabCreator",
+      "path": "."
+    },
+    {
+      "name": "ExternalPlugins",
+      "path": "../ExternalPlugins"
+    },
+    {
+      "name": "External Decompiled",
+      "path": "../ExternalPlugins/Decompiled"
+    },
+    {
+      "name": "External Notes",
+      "path": "../ExternalPlugins/Notes"
+    },
+    {
+      "name": "Valheim.TestClient",
+      "path": "../LaunchValheim"
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/bin": true,
+      "**/obj": true,
+      "**/.vs": true
+    },
+    "search.exclude": {
+      "**/bin": true,
+      "**/obj": true,
+      "**/BepInEx/cache": true,
+      "**/BepInEx/core": true,
+      "**/BepInEx/interop": true,
+      "**/worlds": true,
+      "**/worlds_local": true,
+      "**/*.db": true,
+      "**/*.fwl": true,
+      "**/LogOutput.log": true,
+      "**/Player.log": true
+    },
+    "files.watcherExclude": {
+      "**/bin/**": true,
+      "**/obj/**": true,
+      "**/BepInEx/cache/**": true,
+      "**/BepInEx/core/**": true,
+      "**/BepInEx/interop/**": true,
+      "**/worlds/**": true,
+      "**/worlds_local/**": true
+    },
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    },
+    "files.associations": {
+      "*.cfg": "ini",
+      "*.yaml": "yaml",
+      "*.yml": "yaml"
+    },
+    "search.followSymlinks": false
+  }
+}

@@ -1,0 +1,22 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+# Valheim/BepInEx runtime noise
+ValheimDevProfile/BepInEx/cache/
+ValheimDevProfile/BepInEx/LogOutput.log
+ValheimDevProfile/BepInEx/interop/
+ValheimDevProfile/Player.log
+
+# Build/deploy temporary output
+*.tmp
+*.bak
+*.old
+
+# Optional local backups
+_Backups/
+
+# Valheim/BepInEx dependency DLLs (provided by user from game install)
+libs/
