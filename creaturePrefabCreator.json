@@ -1,4 +1,6 @@
 {
+  "version": "1.0.0",
+  "schemaVersion": 1,
   "generatedPrefabs": [
     {
       "sourcePrefab": "Bjorn",
@@ -17,7 +19,15 @@
       "damageMultiplier": 0.1,
       "clearDeathEffects": false,
       "copyDeathEffectsFrom": null,
-      "deathEffectScaleMultiplier": null
+      "deathEffectScaleMultiplier": 0.5,
+      "forceFaction": null,
+      "disableAI": false,
+      "disableIdleSounds": false,
+      "disableAggro": false,
+      "disableFleeing": false,
+      "tintColor": "#8B4513",
+      "glowColor": null,
+      "friendAttacked": null
     },
     {
       "sourcePrefab": "Wolf",
@@ -36,7 +46,15 @@
       "damageMultiplier": 0.2,
       "clearDeathEffects": false,
       "copyDeathEffectsFrom": null,
-      "deathEffectScaleMultiplier": null
+      "deathEffectScaleMultiplier": 0.5,
+      "forceFaction": null,
+      "disableAI": false,
+      "disableIdleSounds": false,
+      "disableAggro": false,
+      "disableFleeing": false,
+      "tintColor": "#696969",
+      "glowColor": null,
+      "friendAttacked": null
     },
     {
       "sourcePrefab": "Lox",
@@ -55,7 +73,15 @@
       "damageMultiplier": 0.3,
       "clearDeathEffects": false,
       "copyDeathEffectsFrom": null,
-      "deathEffectScaleMultiplier": null
+      "deathEffectScaleMultiplier": 0.5,
+      "forceFaction": null,
+      "disableAI": false,
+      "disableIdleSounds": false,
+      "disableAggro": false,
+      "disableFleeing": false,
+      "tintColor": null,
+      "glowColor": null,
+      "friendAttacked": null
     },
     {
       "sourcePrefab": "Boar",
@@ -74,7 +100,69 @@
       "damageMultiplier": 0.05,
       "clearDeathEffects": false,
       "copyDeathEffectsFrom": null,
-      "deathEffectScaleMultiplier": null
+      "deathEffectScaleMultiplier": 0.3,
+      "forceFaction": null,
+      "disableAI": false,
+      "disableIdleSounds": false,
+      "disableAggro": false,
+      "disableFleeing": false,
+      "tintColor": null,
+      "glowColor": null,
+      "friendAttacked": null
+    },
+    {
+      "sourcePrefab": "Wolf",
+      "newPrefab": "Wolf_red_dire",
+      "enabled": true,
+      "adultPrefab": null,
+      "displayName": "Red Dire Wolf",
+      "scale": 1.2,
+      "growIntoAdult": false,
+      "growTimeSeconds": 0,
+      "preserveTamed": false,
+      "preserveLevel": false,
+      "preserveOwner": false,
+      "preserveName": false,
+      "healthMultiplier": 1.5,
+      "damageMultiplier": 1.5,
+      "clearDeathEffects": false,
+      "copyDeathEffectsFrom": null,
+      "deathEffectScaleMultiplier": 1.2,
+      "forceFaction": null,
+      "disableAI": false,
+      "disableIdleSounds": false,
+      "disableAggro": false,
+      "disableFleeing": false,
+      "tintColor": "#8B0000",
+      "glowColor": "#FF0000",
+      "friendAttacked": null
+    },
+    {
+      "sourcePrefab": "Wolf",
+      "newPrefab": "Wolf_red_dire_pup",
+      "enabled": true,
+      "adultPrefab": "Wolf_red_dire",
+      "displayName": "Red Dire Wolf Pup",
+      "scale": 0.5,
+      "growIntoAdult": true,
+      "growTimeSeconds": 3600,
+      "preserveTamed": true,
+      "preserveLevel": true,
+      "preserveOwner": true,
+      "preserveName": false,
+      "healthMultiplier": 0.3,
+      "damageMultiplier": 0.2,
+      "clearDeathEffects": false,
+      "copyDeathEffectsFrom": null,
+      "deathEffectScaleMultiplier": 0.6,
+      "forceFaction": null,
+      "disableAI": false,
+      "disableIdleSounds": false,
+      "disableAggro": false,
+      "disableFleeing": false,
+      "tintColor": "#8B0000",
+      "glowColor": "#FF0000",
+      "friendAttacked": null
     }
   ],
   "prefabOverrides": [
@@ -83,14 +171,21 @@
       "enabled": true,
       "displayName": "Dire Wolf",
       "scale": 1.5,
-      "disableAI": true,
       "applyToExistingSpawnedCreatures": true,
       "propagateToGeneratedVariants": true,
       "healthMultiplier": null,
       "damageMultiplier": null,
       "clearDeathEffects": false,
       "copyDeathEffectsFrom": null,
-      "deathEffectScaleMultiplier": null
+      "deathEffectScaleMultiplier": null,
+      "forceFaction": null,
+      "disableAI": false,
+      "disableIdleSounds": false,
+      "disableAggro": false,
+      "disableFleeing": false,
+      "tintColor": null,
+      "glowColor": null,
+      "friendAttacked": null
     },
     {
       "targetPrefab": "Wolf_cub",
@@ -103,7 +198,15 @@
       "damageMultiplier": null,
       "clearDeathEffects": false,
       "copyDeathEffectsFrom": "Wolf",
-      "deathEffectScaleMultiplier": 0.5
+      "deathEffectScaleMultiplier": 0.5,
+      "forceFaction": null,
+      "disableAI": false,
+      "disableIdleSounds": false,
+      "disableAggro": false,
+      "disableFleeing": false,
+      "tintColor": null,
+      "glowColor": null,
+      "friendAttacked": null
     },
     {
       "targetPrefab": "Boar",
@@ -116,7 +219,15 @@
       "damageMultiplier": 2.0,
       "clearDeathEffects": false,
       "copyDeathEffectsFrom": null,
-      "deathEffectScaleMultiplier": null
+      "deathEffectScaleMultiplier": null,
+      "forceFaction": null,
+      "disableAI": false,
+      "disableIdleSounds": false,
+      "disableAggro": false,
+      "disableFleeing": false,
+      "tintColor": null,
+      "glowColor": null,
+      "friendAttacked": null
     },
     {
       "targetPrefab": "Bjorn",
@@ -129,7 +240,15 @@
       "damageMultiplier": null,
       "clearDeathEffects": false,
       "copyDeathEffectsFrom": null,
-      "deathEffectScaleMultiplier": null
+      "deathEffectScaleMultiplier": null,
+      "forceFaction": null,
+      "disableAI": false,
+      "disableIdleSounds": false,
+      "disableAggro": false,
+      "disableFleeing": false,
+      "tintColor": null,
+      "glowColor": null,
+      "friendAttacked": null
     },
     {
       "targetPrefab": "CreatureWithBrokenDeath",
@@ -142,17 +261,49 @@
       "damageMultiplier": null,
       "clearDeathEffects": true,
       "copyDeathEffectsFrom": null,
-      "deathEffectScaleMultiplier": null
+      "deathEffectScaleMultiplier": null,
+      "forceFaction": null,
+      "disableAI": false,
+      "disableIdleSounds": false,
+      "disableAggro": false,
+      "disableFleeing": false,
+      "tintColor": null,
+      "glowColor": null,
+      "friendAttacked": null
     }
   ],
   "runtimeModifiers": [
     {
       "targetPrefab": "Wolf",
+      "enabled": true,
       "conditions": {
-        "ridden": true
+        "saddled": true,
+        "ridden": false
       },
       "effects": {
-        "enableAI": true
+        "disableAI": true
+      }
+    },
+    {
+      "targetPrefab": "Wolf_red_dire",
+      "enabled": true,
+      "conditions": {
+        "saddled": true,
+        "ridden": false
+      },
+      "effects": {
+        "disableAI": true
+      }
+    },
+    {
+      "targetPrefab": "Lox",
+      "enabled": true,
+      "conditions": {
+        "saddled": true,
+        "ridden": false
+      },
+      "effects": {
+        "disableAI": true
       }
     }
   ]
