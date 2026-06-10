@@ -6,7 +6,7 @@ All debug commands are registered as Jötunn `ConsoleCommand` instances via `Cre
 
 ## Command Architecture
 
-There are six primary commands. All old per-topic commands have been deprecated — they still exist as stubs that print the new equivalent, but will be removed in a future release.
+There are seven primary commands. All old per-topic commands have been deprecated — they still exist as stubs that print the new equivalent, but will be removed in a future release.
 
 | Command | Purpose |
 |---------|---------|

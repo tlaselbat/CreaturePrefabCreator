@@ -18,9 +18,20 @@ namespace CreaturePrefabCreator.Debug
         private static string SanitizeFileName(string name)
         {
             if (string.IsNullOrEmpty(name)) return "dump";
+
+            // SECURITY: Block path traversal attempts
+            // Remove directory separators and parent directory references
+            name = name.Replace("../", "_").Replace("..\\", "_");
+            name = name.Replace("/", "_").Replace("\\", "_");
+            name = name.Replace("..", "_");
+
+            // Remove invalid filename characters
             foreach (char c in Path.GetInvalidFileNameChars()) name = name.Replace(c, '_');
             name = name.Replace(' ', '_');
+
+            // Ensure .json extension
             if (!name.EndsWith(".json", StringComparison.OrdinalIgnoreCase)) name += ".json";
+
             return name;
         }
 
