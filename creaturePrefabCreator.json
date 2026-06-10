@@ -83,6 +83,7 @@
       "enabled": true,
       "displayName": "Dire Wolf",
       "scale": 1.5,
+      "disableAI": true,
       "applyToExistingSpawnedCreatures": true,
       "propagateToGeneratedVariants": true,
       "healthMultiplier": null,
@@ -148,10 +149,10 @@
     {
       "targetPrefab": "Wolf",
       "conditions": {
-        "saddled": true
+        "ridden": true
       },
       "effects": {
-        "disableAI": true
+        "enableAI": true
       }
     }
   ]
