@@ -413,13 +413,19 @@ namespace CreaturePrefabCreator.RuntimeModifiers
                 {
                     // Capture AI state before disabling
                     var state = CaptureAIState(character, "runtime rule: saddled=true, ridden=false");
-                    if (state != null)
+                    // ATOMIC: Only track state if DisableAIComponents actually changes something
+                    bool changed = SaddledCreaturePatch.DisableAIComponents(character);
+                    if (changed && state != null)
                     {
                         _runtimeAIDisabled[key] = state;
-                        SaddledCreaturePatch.DisableAIComponents(character);
                         CreaturePrefabCreatorPlugin.Instance?.Log(
                             $"[RuntimeModifier] '{character.gameObject.name}' (key={key}): saddled=true, ridden=false -> disabling AI");
                         RuntimeModifierEventBuffer.Record("AIDisabled", prefabName, key, "saddled=true, ridden=false");
+                    }
+                    else if (!changed && CreaturePrefabCreatorPlugin.Instance?.ConfigDebugAIState?.Value == true)
+                    {
+                        CreaturePrefabCreatorPlugin.Instance?.Log(
+                            $"[RuntimeModifier] '{character.gameObject.name}' (key={key}): DisableAIComponents did not change any state (possibly not owner)");
                     }
                 }
                 else if (!wantsDisableAI && currentlyDisabled)
@@ -435,7 +441,7 @@ namespace CreaturePrefabCreator.RuntimeModifiers
                         // Fallback if state is missing
                         SaddledCreaturePatch.EnableAIComponents(character);
                     }
-                    
+
                     string reason = anyDisableAIRule
                         ? "saddled=true, ridden=true -> restoring AI for mounted control"
                         : "saddled=false -> restoring AI";
@@ -471,13 +477,19 @@ namespace CreaturePrefabCreator.RuntimeModifiers
                 {
                     // Capture AI state before enabling (should be disabled)
                     var state = CaptureAIState(character, "runtime rule: enableAI condition met");
-                    if (state != null)
+                    // ATOMIC: Only track state if EnableAIComponents actually changes something
+                    bool changed = SaddledCreaturePatch.EnableAIComponents(character);
+                    if (changed && state != null)
                     {
                         _runtimeAIEnabled[key] = state;
-                        SaddledCreaturePatch.EnableAIComponents(character);
                         CreaturePrefabCreatorPlugin.Instance?.Log(
                             $"[RuntimeModifier] '{character.gameObject.name}' (key={key}): enableAI condition met -> enabling AI (creature has PermanentAIDisabledMarker)");
                         RuntimeModifierEventBuffer.Record("AIEnabled", prefabName, key, "enableAI condition met, creature had PermanentAIDisabledMarker");
+                    }
+                    else if (!changed && CreaturePrefabCreatorPlugin.Instance?.ConfigDebugAIState?.Value == true)
+                    {
+                        CreaturePrefabCreatorPlugin.Instance?.Log(
+                            $"[RuntimeModifier] '{character.gameObject.name}' (key={key}): EnableAIComponents did not change any state (possibly not owner)");
                     }
                 }
                 else if (!wantsEnableAI && currentlyEnabled)
@@ -569,27 +581,139 @@ namespace CreaturePrefabCreator.RuntimeModifiers
         private static bool IsRidden(Character character)
             => SaddledCreaturePatch.IsActivelyRidden(character);
 
+        /// <summary>
+        /// Applies health multiplier by scaling max health while preserving current health percentage.
+        /// SAFETY: Uses GetMaxHealthBase() for baseline to avoid resetting current health every tick.
+        /// </summary>
         private static void ApplyHealth(Character character, float mult)
         {
             ZDOID key = GetCreatureKey(character);
 
-            if (!_originalHealth.ContainsKey(key))
-                _originalHealth[key] = character.m_health;
+            // Get the baseline max health - this is the config-defined max, not current health
+            float baselineMax = GetCharacterMaxHealthBase(character);
 
-            float original = _originalHealth[key];
-            float newHealth = original * mult;
-            character.m_health = newHealth;
+            if (!_originalHealth.ContainsKey(key))
+                _originalHealth[key] = baselineMax;
+
+            float originalMax = _originalHealth[key];
+            float newMax = originalMax * mult;
+
+            // Calculate current health percentage to preserve it
+            float currentHealth = character.m_health;
+            float currentMax = GetCharacterMaxHealthBase(character);
+            float healthPercent = (currentMax > 0) ? (currentHealth / currentMax) : 1f;
+
+            // Apply the new max health while preserving percentage
+            // Use SetMaxHealth if available to properly update the character's max health
+            SetCharacterMaxHealth(character, newMax);
+
+            // Restore health percentage (clamp to new max to be safe)
+            character.m_health = Mathf.Min(newMax * healthPercent, newMax);
 
             if (CreaturePrefabCreatorPlugin.Instance?.ConfigDebugAIState?.Value == true)
                 CreaturePrefabCreatorPlugin.Instance.Log(
-                    $"[RuntimeModifier] '{character.gameObject.name}' (key={key}): health {original} × {mult} = {newHealth}");
+                    $"[RuntimeModifier] '{character.gameObject.name}' (key={key}): maxHealth {originalMax} × {mult} = {newMax} (preserved {healthPercent:P0} health)");
         }
 
         private static void RestoreHealth(Character character)
         {
             ZDOID key = GetCreatureKey(character);
-            if (_originalHealth.TryGetValue(key, out float original))
-                character.m_health = original;
+            if (_originalHealth.TryGetValue(key, out float originalMax))
+            {
+                // Restore original max health while preserving current percentage
+                float currentHealth = character.m_health;
+                float currentMax = GetCharacterMaxHealthBase(character);
+                float healthPercent = (currentMax > 0) ? (currentHealth / currentMax) : 1f;
+
+                SetCharacterMaxHealth(character, originalMax);
+                character.m_health = Mathf.Min(originalMax * healthPercent, originalMax);
+            }
+        }
+
+        /// <summary>
+        /// Gets the character's max health base value.
+        /// Falls back to m_health if reflection fails (with warning).
+        /// </summary>
+        private static float GetCharacterMaxHealthBase(Character character)
+        {
+            if (character == null) return 100f;
+
+            // Try to get max health through Valheim's GetMaxHealth method
+            try
+            {
+                // GetMaxHealth() returns the calculated max including level modifiers
+                // We use m_health as fallback since in Valheim, m_maxHealth is the base and m_health is current
+                var method = typeof(Character).GetMethod("GetMaxHealth", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (method != null)
+                {
+                    var result = method.Invoke(character, null);
+                    if (result is float maxHealth)
+                        return maxHealth;
+                }
+            }
+            catch (Exception ex)
+            {
+                CreaturePrefabCreatorPlugin.Instance?.LogWarning(
+                    $"[RuntimeModifier] GetMaxHealth reflection failed for '{character.name}': {ex.Message}");
+            }
+
+            // Fallback: use m_maxHealth field if accessible
+            try
+            {
+                var field = typeof(Character).GetField("m_maxHealth", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (field != null)
+                {
+                    var val = field.GetValue(character);
+                    if (val is float maxHealth)
+                        return maxHealth;
+                }
+            }
+            catch { }
+
+            // Ultimate fallback: warn and return current health (not ideal but prevents crashes)
+            CreaturePrefabCreatorPlugin.Instance?.LogWarning(
+                $"[RuntimeModifier] Could not determine max health for '{character.name}'. " +
+                "Health multiplier may behave unexpectedly. Consider disabling RuntimeModifiers or healthMultiplier rules.");
+            return character.m_health;
+        }
+
+        /// <summary>
+        /// Sets the character's max health safely.
+        /// Tries multiple approaches to set max health properly.
+        /// </summary>
+        private static void SetCharacterMaxHealth(Character character, float newMaxHealth)
+        {
+            if (character == null) return;
+
+            // Try SetMaxHealth method first (if it exists)
+            try
+            {
+                var method = typeof(Character).GetMethod("SetMaxHealth", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (method != null)
+                {
+                    method.Invoke(character, new object[] { newMaxHealth });
+                    return;
+                }
+            }
+            catch { }
+
+            // Fallback: set m_maxHealth directly
+            try
+            {
+                var field = typeof(Character).GetField("m_maxHealth", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (field != null)
+                {
+                    field.SetValue(character, newMaxHealth);
+                    return;
+                }
+            }
+            catch { }
+
+            // Ultimate fallback: just set m_health directly (will be overwritten on damage/heal)
+            // This is unsafe but prevents total failure
+            CreaturePrefabCreatorPlugin.Instance?.LogWarning(
+                $"[RuntimeModifier] Could not set max health for '{character.name}'. " +
+                "Falling back to direct m_health modification (may be reverted by game).");
         }
 
         private static void ApplySpeed(Character character, float mult)

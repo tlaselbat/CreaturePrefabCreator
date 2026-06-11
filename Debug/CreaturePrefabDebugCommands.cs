@@ -26,6 +26,7 @@ namespace CreaturePrefabCreator.Debug
                 CommandManager.Instance.AddConsoleCommand(new PrintConsoleCommand());
                 CommandManager.Instance.AddConsoleCommand(new DumpJsonCommand());
                 CommandManager.Instance.AddConsoleCommand(new RepairWorldCommand());
+                CommandManager.Instance.AddConsoleCommand(new AIMigrateCommand());
                 CreaturePrefabCreatorPlugin.Instance.Log("CPC debug console commands registered.");
             }
             catch (System.Exception ex)
@@ -86,6 +87,12 @@ namespace CreaturePrefabCreator.Debug
                     return;
                 }
 
+                if (Player.m_localPlayer == null)
+                {
+                    CreaturePrefabCreatorPlugin.Instance.Log("[CPC spawn] Player not available. Wait until fully loaded in world.");
+                    return;
+                }
+
                 if (ZNetScene.instance == null)
                 {
                     CreaturePrefabCreatorPlugin.Instance.Log("[CPC spawn] ZNetScene not available.");
@@ -127,31 +134,42 @@ namespace CreaturePrefabCreator.Debug
                 if (prefabTameable != null)
                     prefabTameable.m_startsTamed = true;
 
-                for (int i = 0; i < count; i++)
+                // CRITICAL: Use try/finally to guarantee prefab state restoration
+                // even if exceptions occur during spawn loop.
+                try
                 {
-                    Vector3 pos = basePos + new Vector3(i * 2f, 0f, 0f);
-                    ZNetScene.instance.SpawnObject(pos, Quaternion.identity, prefab);
+                    // Clamp count to reasonable values to prevent crashes/performance issues
+                    count = System.Math.Min(count, 50);
 
-                    if (spawnTamed || level > 1)
+                    for (int i = 0; i < count; i++)
                     {
-                        bool capTamed = spawnTamed;
-                        bool capHasCharacter = hasCharacter;
-                        int capLevel = level;
-                        long ownerID = Player.m_localPlayer?.GetPlayerID() ?? 0L;
-                        Vector3 capPos = pos;
-                        string capPrefabName = prefabName;
-                        CreaturePrefabCreatorPlugin.Instance?.RunCoroutine(
-                            DeferredSetTamed(capPrefabName, capPos, capTamed, capHasCharacter, capLevel, ownerID));
+                        Vector3 pos = basePos + new Vector3(i * 2f, 0f, 0f);
+                        ZNetScene.instance.SpawnObject(pos, Quaternion.identity, prefab);
+
+                        if (spawnTamed || level > 1)
+                        {
+                            bool capTamed = spawnTamed;
+                            bool capHasCharacter = hasCharacter;
+                            int capLevel = level;
+                            long ownerID = Player.m_localPlayer?.GetPlayerID() ?? 0L;
+                            Vector3 capPos = pos;
+                            string capPrefabName = prefabName;
+                            CreaturePrefabCreatorPlugin.Instance?.RunCoroutine(
+                                DeferredSetTamed(capPrefabName, capPos, capTamed, capHasCharacter, capLevel, ownerID));
+                        }
                     }
+
+                    string levelSuffix = level > 1 && hasCharacter ? $" level={level}" : "";
+                    string suffix = spawnTamed ? $" (tamed{levelSuffix})" : (level > 1 && hasCharacter ? $" ({levelSuffix.TrimStart()})" : "");
+                    CreaturePrefabCreatorPlugin.Instance.Log($"[CPC spawn] Spawned {count}x '{prefabName}'{suffix} near {basePos}.");
                 }
-
-                // Restore prefab Tameable to original state so subsequent non-tamed spawns are unaffected.
-                if (prefabTameable != null)
-                    prefabTameable.m_startsTamed = originalStartsTamed;
-
-                string levelSuffix = level > 1 && hasCharacter ? $" level={level}" : "";
-                string suffix = spawnTamed ? $" (tamed{levelSuffix})" : (level > 1 && hasCharacter ? $" ({levelSuffix.TrimStart()})" : "");
-                CreaturePrefabCreatorPlugin.Instance.Log($"[CPC spawn] Spawned {count}x '{prefabName}'{suffix} near {basePos}.");
+                finally
+                {
+                    // Restore prefab Tameable to original state so subsequent non-tamed spawns are unaffected.
+                    // This runs even if the spawn loop throws an exception.
+                    if (prefabTameable != null)
+                        prefabTameable.m_startsTamed = originalStartsTamed;
+                }
             }
         }
 
@@ -659,6 +677,71 @@ namespace CreaturePrefabCreator.Debug
             if (player != null)
                 return player.transform.position;
             return Vector3.zero;
+        }
+
+        // ── cpc_migrate_ai ───────────────────────────────────────────────────
+
+        private class AIMigrateCommand : ConsoleCommand
+        {
+            public override string Name => "cpc_migrate_ai";
+            public override string Help => "Migrate AI markers. Usage: cpc_migrate_ai [--prefab <name>|--all] [--dry-run]";
+
+            public override void Run(string[] args)
+            {
+                var p = CpcCommandRouter.Parse(args);
+                string prefabName = p.GetOption("--prefab");
+                bool all = p.HasFlag("--all");
+                bool dryRun = p.HasFlag("--dry-run");
+
+                var plugin = CreaturePrefabCreatorPlugin.Instance;
+
+                if (string.IsNullOrEmpty(prefabName) && !all)
+                {
+                    plugin.Log("Usage: cpc_migrate_ai [--prefab <name>|--all] [--dry-run]");
+                    plugin.Log("  --prefab <name>  Migrate specific prefab");
+                    plugin.Log("  --all            Migrate all live creatures with markers");
+                    plugin.Log("  --dry-run        Show what would be migrated without applying");
+                    return;
+                }
+
+                if (dryRun)
+                {
+                    plugin.Log("[cpc_migrate_ai --dry-run] Dry run mode - no changes applied.");
+                    // Count only, don't migrate
+                    var characters = UnityEngine.Object.FindObjectsByType<Character>(FindObjectsSortMode.None);
+                    int markerCount = 0;
+                    foreach (var character in characters)
+                    {
+                        if (character?.GetComponent<PermanentAIDisabledMarker>() != null)
+                        {
+                            string name = character.gameObject.name;
+                            if (name.EndsWith("(Clone)")) name = name.Substring(0, name.Length - 7).TrimEnd();
+                            
+                            if (all || string.Equals(name, prefabName, System.StringComparison.Ordinal))
+                            {
+                                markerCount++;
+                                plugin.Log($"[dry-run] Would migrate: {character.gameObject.name}");
+                            }
+                        }
+                    }
+                    plugin.Log($"[dry-run] Found {markerCount} creature(s) with PermanentAIDisabledMarker.");
+                    return;
+                }
+
+                int migratedCount;
+                if (all)
+                {
+                    plugin.Log("[cpc_migrate_ai] Migrating all live creatures with AI markers...");
+                    migratedCount = Patches.AIMarkerMigrationManager.MigrateAll();
+                }
+                else
+                {
+                    plugin.Log($"[cpc_migrate_ai] Migrating live instances of '{prefabName}'...");
+                    migratedCount = Patches.AIMarkerMigrationManager.MigratePrefab(prefabName);
+                }
+
+                plugin.Log($"[cpc_migrate_ai] Migrated {migratedCount} creature(s).");
+            }
         }
     }
 }

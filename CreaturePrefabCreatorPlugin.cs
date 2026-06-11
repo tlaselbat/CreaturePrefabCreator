@@ -193,6 +193,13 @@ namespace CreaturePrefabCreator
                 }
             }
 
+            // Run AI marker migration if config changed
+            if (LoadedConfig != null && Patches.AIMarkerMigrationManager.IsMigrationNeeded(LoadedConfig))
+            {
+                Log("Config change detected for disableAI states. Running AI marker migration...");
+                Patches.AIMarkerMigrationManager.MigrateOnStartup(LoadedConfig);
+            }
+
             // Unregister to prevent duplicate work on scene reload
             PrefabManager.OnVanillaPrefabsAvailable -= OnVanillaPrefabsAvailable;
         }

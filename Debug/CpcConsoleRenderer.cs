@@ -392,6 +392,7 @@ namespace CreaturePrefabCreator.Debug
                 Log("  cpc_print_console <mode> [options]  Modes: live, prefab, world-zdos");
                 Log("  cpc_dump_json <mode> [options]      Modes: live, prefab, world-zdos");
                 Log("  cpc_repair_world [--cleanup-zdos <prefab>|--orphans] [--dry-run|--confirm] [--verbose]");
+                Log("  cpc_migrate_ai [--prefab <name>|--all] [--dry-run]");
                 Log("Use: cpc_help --command <name> for detailed usage.");
             }
             else
@@ -481,6 +482,17 @@ namespace CreaturePrefabCreator.Debug
                         Log("  --level <n>        Star level when applicable.");
                         Log("  --tamed            Spawn as tamed.");
                         Log("  --distance <m>     Distance from player (default 3).");
+                        break;
+
+                    case "cpc_migrate_ai":
+                        Log("=== cpc_migrate_ai ===");
+                        Log("Usage: cpc_migrate_ai [--prefab <name>|--all] [--dry-run]");
+                        Log("Migrates PermanentAIDisabledMarker components from creatures");
+                        Log("when disableAI is changed from true to false in config.");
+                        Log("  --prefab <name>  Migrate specific prefab only.");
+                        Log("  --all            Migrate all creatures with markers.");
+                        Log("  --dry-run        Show what would be migrated without applying.");
+                        Log("Note: Migration also runs automatically on startup when config changes.");
                         break;
 
                     default:

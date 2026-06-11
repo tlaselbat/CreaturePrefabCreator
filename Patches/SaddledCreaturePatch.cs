@@ -365,7 +365,7 @@ namespace CreaturePrefabCreator.Patches
 
         /// <summary>
         /// Canonical saddle detection using the same cached reflection as IsActivelyRidden.
-        /// Priority: Tameable.m_saddle + HaveSaddle() → Sadle component → Humanoid inventory "Saddle".
+        /// Priority: Tameable.m_saddle + HaveSaddle() → Sadle component → MountUp getSaddle/getSadle → Humanoid inventory "Saddle".
         /// Call SaddledCreaturePatch.Initialize() before first use.
         /// </summary>
         public static bool IsSaddledViaCanonicalPath(Character character)
@@ -405,7 +405,27 @@ namespace CreaturePrefabCreator.Patches
                 }
             }
 
-            // 3. FALLBACK: Humanoid inventory has "Saddle" item
+            // 3. MountUpRestored: check via Mountable -> getSaddle/getSadle
+            // Some MountUp creatures may not expose vanilla Tameable.m_saddle
+            if (_mountUpMountableType != null && _mountUpGetSaddleMethod != null)
+            {
+                var mountable = character.GetComponent(_mountUpMountableType);
+                if (mountable != null)
+                {
+                    try
+                    {
+                        object saddleObj = _mountUpGetSaddleMethod.Invoke(mountable, null);
+                        if (saddleObj is GameObject saddleGO && saddleGO != null)
+                        {
+                            if (debug) CreaturePrefabCreatorPlugin.Instance.Log($"[IsSaddled] {character.name}: true (MountUp via {_mountUpGetSaddleMethodName})");
+                            return true;
+                        }
+                    }
+                    catch { }
+                }
+            }
+
+            // 4. FALLBACK: Humanoid inventory has "Saddle" item
             if (character is Humanoid humanoid)
             {
                 var inv = humanoid.GetInventory();
@@ -432,23 +452,27 @@ namespace CreaturePrefabCreator.Patches
         /// <summary>
         /// Enable AI components on this creature.
         /// CRITICAL: Only modifies AI if we are the network owner.
+        /// Returns true if any AI component was actually enabled (state changed).
         /// </summary>
-        internal static void EnableAIComponents(Character character)
+        internal static bool EnableAIComponents(Character character)
         {
-            if (character == null) return;
-            
+            if (character == null) return false;
+
             // CRITICAL: Check network ownership before modifying AI
             if (!CanModifyCreature(character))
             {
                 if (CreaturePrefabCreatorPlugin.Instance?.ConfigDebugAIState?.Value == true)
                     CreaturePrefabCreatorPlugin.Instance?.Log($"[EnableAIComponents] {character.name}: skipped - not owner or no ZNetView");
-                return;
+                return false;
             }
+
+            bool anyChanged = false;
 
             var monsterAI = character.GetComponent<MonsterAI>();
             if (monsterAI != null && !monsterAI.enabled)
             {
                 monsterAI.enabled = true;
+                anyChanged = true;
                 if (CreaturePrefabCreatorPlugin.Instance?.ConfigDebugAIState?.Value == true)
                     CreaturePrefabCreatorPlugin.Instance?.Log($"[EnableAIComponents] {character.name}: enabled MonsterAI");
             }
@@ -457,6 +481,7 @@ namespace CreaturePrefabCreator.Patches
             if (animalAI != null && !animalAI.enabled)
             {
                 animalAI.enabled = true;
+                anyChanged = true;
                 if (CreaturePrefabCreatorPlugin.Instance?.ConfigDebugAIState?.Value == true)
                     CreaturePrefabCreatorPlugin.Instance?.Log($"[EnableAIComponents] {character.name}: enabled AnimalAI");
             }
@@ -465,31 +490,38 @@ namespace CreaturePrefabCreator.Patches
             if (baseAI != null && !baseAI.enabled)
             {
                 baseAI.enabled = true;
+                anyChanged = true;
                 if (CreaturePrefabCreatorPlugin.Instance?.ConfigDebugAIState?.Value == true)
                     CreaturePrefabCreatorPlugin.Instance?.Log($"[EnableAIComponents] {character.name}: enabled BaseAI");
             }
+
+            return anyChanged;
         }
 
         /// <summary>
-        /// P2: Disable AI components on this creature.
+        /// Disable AI components on this creature.
         /// CRITICAL: Only modifies AI if we are the network owner.
+        /// Returns true if any AI component was actually disabled (state changed).
         /// </summary>
-        internal static void DisableAIComponents(Character character)
+        internal static bool DisableAIComponents(Character character)
         {
-            if (character == null) return;
-            
+            if (character == null) return false;
+
             // CRITICAL: Check network ownership before modifying AI
             if (!CanModifyCreature(character))
             {
                 if (CreaturePrefabCreatorPlugin.Instance?.ConfigDebugAIState?.Value == true)
                     CreaturePrefabCreatorPlugin.Instance?.Log($"[DisableAIComponents] {character.name}: skipped - not owner or no ZNetView");
-                return;
+                return false;
             }
+
+            bool anyChanged = false;
 
             var monsterAI = character.GetComponent<MonsterAI>();
             if (monsterAI != null && monsterAI.enabled)
             {
                 monsterAI.enabled = false;
+                anyChanged = true;
                 if (CreaturePrefabCreatorPlugin.Instance?.ConfigDebugAIState?.Value == true)
                     CreaturePrefabCreatorPlugin.Instance?.Log($"[DisableAIComponents] {character.name}: disabled MonsterAI");
             }
@@ -498,6 +530,7 @@ namespace CreaturePrefabCreator.Patches
             if (animalAI != null && animalAI.enabled)
             {
                 animalAI.enabled = false;
+                anyChanged = true;
                 if (CreaturePrefabCreatorPlugin.Instance?.ConfigDebugAIState?.Value == true)
                     CreaturePrefabCreatorPlugin.Instance?.Log($"[DisableAIComponents] {character.name}: disabled AnimalAI");
             }
@@ -506,9 +539,12 @@ namespace CreaturePrefabCreator.Patches
             if (baseAI != null && baseAI.enabled)
             {
                 baseAI.enabled = false;
+                anyChanged = true;
                 if (CreaturePrefabCreatorPlugin.Instance?.ConfigDebugAIState?.Value == true)
                     CreaturePrefabCreatorPlugin.Instance?.Log($"[DisableAIComponents] {character.name}: disabled BaseAI");
             }
+
+            return anyChanged;
         }
     }
 
