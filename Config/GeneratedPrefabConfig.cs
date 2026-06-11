@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.Serialization;
+using CreaturePrefabCreator.Config.Advanced;
 
 namespace CreaturePrefabCreator.Config
 {
@@ -81,6 +82,10 @@ namespace CreaturePrefabCreator.Config
 
         [DataMember(Name = "friendAttacked", IsRequired = false)]
         public bool? FriendAttacked { get; set; } = null;
+
+        // Advanced modifier configuration (optional, backwards-compatible)
+        [DataMember(Name = "advanced", IsRequired = false)]
+        public AdvancedModifierConfig Advanced { get; set; } = null;
 
         public bool IsValid(out string error)
         {

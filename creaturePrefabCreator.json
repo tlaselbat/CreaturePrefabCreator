@@ -1,6 +1,7 @@
 {
-  "version": "1.0.0",
-  "schemaVersion": 1,
+  "version": "1.1.0",
+  "schemaVersion": 2,
+  "comment": "Advanced modifier schema (v1.1.0+) adds the 'advanced' object for granular creature customization",
   "generatedPrefabs": [
     {
       "sourcePrefab": "Bjorn",
@@ -163,6 +164,52 @@
       "tintColor": "#8B0000",
       "glowColor": "#FF0000",
       "friendAttacked": null
+    },
+    {
+      "_comment": "Advanced schema example: Dire Wolf with specific damage types and AI tuning",
+      "sourcePrefab": "Wolf",
+      "newPrefab": "Wolf_dire_advanced_example",
+      "enabled": false,
+      "adultPrefab": null,
+      "displayName": "Dire Wolf (Advanced Example)",
+      "scale": 1.35,
+      "growIntoAdult": false,
+      "healthMultiplier": null,
+      "damageMultiplier": null,
+      "advanced": {
+        "health": { "maxHealth": 1.75 },
+        "damage": {
+          "multiplier": 1.25,
+          "fire": 1.5,
+          "poison": 0.5,
+          "blunt": 1.1,
+          "slash": 1.3,
+          "pierce": 1.2
+        },
+        "movementSpeed": {
+          "walk": 1.1,
+          "run": 1.25,
+          "swim": 0.9
+        },
+        "ai": {
+          "monsterAI": {
+            "enabled": true,
+            "aggravatable": true,
+            "fleeIfNotAlerted": false,
+            "fleeInLava": false,
+            "fleeRange": 0,
+            "friendAttacked": true
+          }
+        },
+        "dropsAndDeath": {
+          "deathEffect": {
+            "mode": "copyFrom",
+            "copyFrom": "Wolf",
+            "clearExisting": true,
+            "scaleMultiplier": 1.35
+          }
+        }
+      }
     }
   ],
   "prefabOverrides": [

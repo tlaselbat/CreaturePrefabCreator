@@ -14,11 +14,12 @@ A Valheim BepInEx/Jötunn plugin for generating custom creature prefabs and over
 6. [Generated Prefabs](#generated-prefabs)
 7. [Prefab Overrides](#prefab-overrides)
 8. [Runtime Modifiers](#runtime-modifiers)
-9. [AllTameable Integration](#alltameable-integration)
-10. [Debug Commands](#debug-commands)
-11. [Multiplayer & Dedicated Servers](#multiplayer--dedicated-servers)
-12. [Troubleshooting](#troubleshooting)
-13. [Building from Source](#building-from-source)
+9. [Advanced Modifier Schema](#advanced-modifier-schema-v110)
+10. [AllTameable Integration](#alltameable-integration)
+11. [Debug Commands](#debug-commands)
+12. [Multiplayer & Dedicated Servers](#multiplayer--dedicated-servers)
+13. [Troubleshooting](#troubleshooting)
+14. [Building from Source](#building-from-source)
 
 ---
 
@@ -544,6 +545,140 @@ When a player mounts this Lox, `ridden` becomes `true`, the condition no longer 
 ]
 ```
 A 1-star tamed wolf gets `1.2 × 1.3 = 1.56×` health. A 2-star gets `1.2 × 1.5 = 1.8×` health.
+
+---
+
+## Advanced Modifier Schema (v1.1.0+)
+
+The `advanced` object provides granular creature customization beyond the legacy simple fields. It is fully backwards-compatible — existing configs continue to work unchanged.
+
+### Usage
+
+Add an `advanced` object to any `generatedPrefabs`, `prefabOverrides`, or `runtimeModifiers` entry:
+
+```json
+{
+  "enabled": true,
+  "sourcePrefab": "Wolf",
+  "newPrefab": "Wolf_dire",
+  "advanced": {
+    "health": { "maxHealth": 1.75 },
+    "damage": { "multiplier": 1.25, "fire": 1.5, "poison": 0.5 },
+    "movementSpeed": { "walk": 1.1, "run": 1.25 },
+    "ai": {
+      "monsterAI": {
+        "enabled": true,
+        "aggravatable": true,
+        "fleeIfNotAlerted": false
+      }
+    },
+    "dropsAndDeath": {
+      "deathEffect": {
+        "mode": "copyFrom",
+        "copyFrom": "Wolf",
+        "scaleMultiplier": 1.2
+      }
+    }
+  }
+}
+```
+
+### Field Tiers
+
+| Tier | Status | Fields |
+|------|--------|--------|
+| **Tier 1** | ✅ Implemented | `health.multiplier`, `health.maxHealth`, `damage.*` (all types), `movementSpeed.*` (all types), `ai.monsterAI.enabled`, `ai.monsterAI.aggravatable`, `ai.monsterAI.fleeIfNotAlerted`, `ai.monsterAI.fleeInLava`, `ai.monsterAI.fleeRange`, `ai.monsterAI.friendAttacked`, `dropsAndDeath.deathEffect.mode/copyFrom/clearExisting/scaleMultiplier` |
+| **Tier 1 Beta** | ⚠️ Runtime-only limitations | `advanced.damage.*` per-type at runtime (use `damageMultiplier` broad for now) |
+| **Tier 2** | 📝 Schema + No-op | `defense.*`, `ai.monsterAI.viewRange/viewAngle/hearRange/alertRange/consume*`, `combat.attackRangeMultiplier/turnSpeedMultiplier`, `interaction.hoverTextOffset/useRangeMultiplier` |
+| **Tier 3** | 🔒 Audit Required | `health.healthRegenMultiplier`, `ai.baseAI/animalAI`, `ai.disable/enable.baseAI/animalAI`, `ai.monsterAI.stoppingDistanceMultiplier`, `combat.attackHitboxScale/attackOriginOffset/attackHeightOffset/projectileSpawnOffset`, `physics.*`, `interaction.saddlePositionOffset/mountPointOffset`, `dropsAndDeath.deathEffect.prefab/dropTableScaleAware`, `transform.*` |
+
+### Priority Rules
+
+When both legacy and advanced fields are present:
+
+- **Health**: `advanced.health.maxHealth` > `advanced.health.multiplier` > `healthMultiplier`
+- **Damage**: Per-type fields (`advanced.damage.fire`) > `advanced.damage.multiplier` > `damageMultiplier`
+- **Movement Speed**: Per-type fields (`advanced.movementSpeed.walk`) > `advanced.movementSpeed.multiplier` > `movementSpeedMultiplier`
+- **AI**: `advanced.ai.monsterAI.enabled` explicit value wins over legacy `disableAI`
+- **Death Effects**: `advanced.dropsAndDeath.deathEffect.*` wins over legacy `clearDeathEffects`/`copyDeathEffectsFrom`
+
+### Death Effect Modes
+
+- `vanilla` — Keep existing death effects (default)
+- `none` — Clear all death effects
+- `copyFrom` — Copy death effects from another prefab (requires `copyFrom` field)
+- `customPrefab` — ⚠️ Tier 3 (not implemented, will log warning)
+
+### Full Example
+
+```json
+{
+  "version": "1.1.0",
+  "schemaVersion": 2,
+  "generatedPrefabs": [
+    {
+      "enabled": true,
+      "sourcePrefab": "Wolf",
+      "newPrefab": "Wolf_red_dire",
+      "displayName": "Red Dire Wolf",
+      "scale": 1.35,
+      "advanced": {
+        "health": { "maxHealth": 1.75 },
+        "damage": {
+          "multiplier": 1.25,
+          "fire": 1.5,
+          "poison": 0.5,
+          "blunt": 1.1,
+          "slash": 1.3
+        },
+        "movementSpeed": {
+          "walk": 1.1,
+          "run": 1.25,
+          "swim": 0.9
+        },
+        "ai": {
+          "monsterAI": {
+            "enabled": true,
+            "aggravatable": true,
+            "fleeIfNotAlerted": false,
+            "fleeInLava": false,
+            "fleeRange": 0,
+            "friendAttacked": true
+          }
+        },
+        "dropsAndDeath": {
+          "deathEffect": {
+            "mode": "copyFrom",
+            "copyFrom": "Wolf",
+            "clearExisting": true,
+            "scaleMultiplier": 1.35
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+### Runtime Modifier Example
+
+```json
+{
+  "enabled": true,
+  "targetPrefab": "Wolf_red_dire",
+  "conditions": { "tamed": true, "saddled": true, "ridden": true },
+  "effects": {
+    "advanced": {
+      "movementSpeed": { "walk": 1.15, "run": 1.3 },
+      "ai": { "enable": { "monsterAI": true } }
+    }
+  }
+}
+```
+
+### Unsupported Fields
+
+Tier 2 and Tier 3 fields are recognized by the schema but will log a warning and have no effect. These require additional testing, safety gates, or implementation work before they can be safely enabled.
 
 ---
 

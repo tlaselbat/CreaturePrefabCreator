@@ -1,5 +1,7 @@
 using CreaturePrefabCreator.Config;
+using CreaturePrefabCreator.Config.Advanced;
 using CreaturePrefabCreator.Patches;
+using CreaturePrefabCreator.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -275,6 +277,34 @@ namespace CreaturePrefabCreator.RuntimeModifiers
             ValidateMult(rule.TargetPrefab, "damageMultiplier", e.DamageMultiplier);
             ValidateMult(rule.TargetPrefab, "movementSpeedMultiplier", e.MovementSpeedMultiplier);
 
+            // Validate advanced fields if present
+            if (e.Advanced?.HasAnyValue == true)
+            {
+                // Log unsupported Tier 2/3 fields once per rule
+                ModifierValidation.LogUnsupportedFields($"RuntimeModifier:{rule.TargetPrefab}", e.Advanced);
+
+                // Validate Tier 1 advanced health fields
+                if (e.Advanced.Health?.Multiplier.HasValue == true)
+                    ValidateMult(rule.TargetPrefab, "advanced.health.multiplier", e.Advanced.Health.Multiplier);
+                if (e.Advanced.Health?.MaxHealth.HasValue == true)
+                    ValidateMult(rule.TargetPrefab, "advanced.health.maxHealth", e.Advanced.Health.MaxHealth);
+
+                // Validate Tier 1 advanced movement speed fields
+                if (e.Advanced.MovementSpeed?.Multiplier.HasValue == true)
+                    ValidateMult(rule.TargetPrefab, "advanced.movementSpeed.multiplier", e.Advanced.MovementSpeed.Multiplier);
+                if (e.Advanced.MovementSpeed?.Base.HasValue == true)
+                    ValidateMult(rule.TargetPrefab, "advanced.movementSpeed.base", e.Advanced.MovementSpeed.Base);
+                if (e.Advanced.MovementSpeed?.Walk.HasValue == true)
+                    ValidateMult(rule.TargetPrefab, "advanced.movementSpeed.walk", e.Advanced.MovementSpeed.Walk);
+                if (e.Advanced.MovementSpeed?.Run.HasValue == true)
+                    ValidateMult(rule.TargetPrefab, "advanced.movementSpeed.run", e.Advanced.MovementSpeed.Run);
+                if (e.Advanced.MovementSpeed?.Swim.HasValue == true)
+                    ValidateMult(rule.TargetPrefab, "advanced.movementSpeed.swim", e.Advanced.MovementSpeed.Swim);
+
+                // Note: advanced.damage per-type fields are Tier 1 Beta for runtime (use damageMultiplier broad)
+                // Note: advanced.ai.monsterAI.enabled is handled in AI enable/disable logic
+            }
+
             var c = rule.Conditions;
             if (c?.StarLevel.HasValue == true && c.StarLevel.Value < 1)
                 CreaturePrefabCreatorPlugin.Instance?.LogWarning($"[RuntimeModifier] '{rule.TargetPrefab}': starLevel {c.StarLevel} is < 1 and will never match.");
@@ -350,11 +380,18 @@ namespace CreaturePrefabCreator.RuntimeModifiers
             float combinedHealth = 1f;
             float combinedDamage = 1f;
             float combinedSpeed = 1f;
+            float? advancedMaxHealth = null;  // absolute max health from advanced config
+            MovementSpeedMultipliers combinedSpeedMultipliers = new MovementSpeedMultipliers
+            {
+                Base = 1f, Walk = 1f, Run = 1f, Swim = 1f
+            };
             bool anyHealthRule = false;
             bool anyDamageRule = false;
             bool anySpeedRule = false;
+            bool anyAdvancedSpeedRule = false;
             bool anyDisableAIRule = false;
             bool anyEnableAIRule = false;
+            bool anyAdvancedEnableAI = false;  // advanced.ai.monsterAI.enabled
 
             foreach (var rule in matchingRules)
             {
@@ -377,6 +414,63 @@ namespace CreaturePrefabCreator.RuntimeModifiers
                 if (s != 1f) { combinedSpeed *= s; anySpeedRule = true; }
                 if (rule.Effects.DisableAI == true) { anyDisableAIRule = true; }
                 if (rule.Effects.EnableAI == true) { anyEnableAIRule = true; }
+
+                // Process advanced fields
+                var adv = rule.Effects.Advanced;
+                if (adv != null)
+                {
+                    // Advanced health: maxHealth takes priority over multiplier
+                    if (adv.Health?.MaxHealth.HasValue == true)
+                    {
+                        float mh = adv.Health.MaxHealth.Value;
+                        if (!ModifierValidation.IsIdentityValue(mh) && ModifierValidation.IsValidMultiplier(mh, out _))
+                        {
+                            // Use the max of all maxHealth rules (last one wins if multiples)
+                            advancedMaxHealth = mh;
+                            anyHealthRule = true;
+                        }
+                    }
+                    else if (adv.Health?.Multiplier.HasValue == true)
+                    {
+                        // Advanced health multiplier if maxHealth not set
+                        float hm = SafeMult(adv.Health.Multiplier);
+                        if (hm != 1f) { combinedHealth *= hm; anyHealthRule = true; }
+                    }
+
+                    // Advanced movement speed per-type
+                    if (adv.MovementSpeed != null)
+                    {
+                        if (adv.MovementSpeed.Base.HasValue)
+                        {
+                            float sm = SafeMult(adv.MovementSpeed.Base);
+                            if (sm != 1f) { combinedSpeedMultipliers.Base *= sm; anyAdvancedSpeedRule = true; }
+                        }
+                        if (adv.MovementSpeed.Walk.HasValue)
+                        {
+                            float sm = SafeMult(adv.MovementSpeed.Walk);
+                            if (sm != 1f) { combinedSpeedMultipliers.Walk *= sm; anyAdvancedSpeedRule = true; }
+                        }
+                        if (adv.MovementSpeed.Run.HasValue)
+                        {
+                            float sm = SafeMult(adv.MovementSpeed.Run);
+                            if (sm != 1f) { combinedSpeedMultipliers.Run *= sm; anyAdvancedSpeedRule = true; }
+                        }
+                        if (adv.MovementSpeed.Swim.HasValue)
+                        {
+                            float sm = SafeMult(adv.MovementSpeed.Swim);
+                            if (sm != 1f) { combinedSpeedMultipliers.Swim *= sm; anyAdvancedSpeedRule = true; }
+                        }
+                    }
+
+                    // Advanced AI: monsterAI.enabled
+                    if (adv.AI?.MonsterAI?.Enabled.HasValue == true)
+                    {
+                        if (adv.AI.MonsterAI.Enabled.Value)
+                            anyAdvancedEnableAI = true;
+                        else
+                            anyDisableAIRule = true;  // disabling AI via advanced
+                    }
+                }
             }
 
             ZDOID key = GetCreatureKey(character);
@@ -385,10 +479,22 @@ namespace CreaturePrefabCreator.RuntimeModifiers
             RestoreSpeed(character);
 
             if (anyHealthRule)
-                ApplyHealth(character, combinedHealth);
+            {
+                // If advanced maxHealth is set, use it as absolute multiplier
+                if (advancedMaxHealth.HasValue)
+                    ApplyHealthMax(character, advancedMaxHealth.Value);
+                else
+                    ApplyHealth(character, combinedHealth);
+            }
 
-            if (anySpeedRule)
-                ApplySpeed(character, combinedSpeed);
+            if (anySpeedRule || anyAdvancedSpeedRule)
+            {
+                // Use advanced per-type multipliers if any are set, otherwise fall back to legacy combined speed
+                if (anyAdvancedSpeedRule)
+                    ApplySpeedAdvanced(character, combinedSpeedMultipliers);
+                else
+                    ApplySpeed(character, combinedSpeed);
+            }
 
             if (anyDamageRule)
                 _currentDamageMult[key] = combinedDamage;
@@ -469,9 +575,12 @@ namespace CreaturePrefabCreator.RuntimeModifiers
             // Conflict rule: disableAI wins over enableAI (safer behavior).
             bool currentlyEnabled = _runtimeAIEnabled.ContainsKey(key);
 
-            if (hasPermanentMarker && anyEnableAIRule && !anyDisableAIRule)
+            // Combine legacy and advanced enable AI flags
+            bool anyEnableAITotal = anyEnableAIRule || anyAdvancedEnableAI;
+
+            if (hasPermanentMarker && anyEnableAITotal && !anyDisableAIRule)
             {
-                bool wantsEnableAI = anyEnableAIRule;
+                bool wantsEnableAI = anyEnableAITotal;
 
                 if (wantsEnableAI && !currentlyEnabled)
                 {
@@ -615,6 +724,39 @@ namespace CreaturePrefabCreator.RuntimeModifiers
                     $"[RuntimeModifier] '{character.gameObject.name}' (key={key}): maxHealth {originalMax} × {mult} = {newMax} (preserved {healthPercent:P0} health)");
         }
 
+        /// <summary>
+        /// Applies absolute max health multiplier (advanced.health.maxHealth).
+        /// Similar to ApplyHealth but treats the multiplier as absolute instead of stacking.
+        /// </summary>
+        private static void ApplyHealthMax(Character character, float maxHealthMult)
+        {
+            ZDOID key = GetCreatureKey(character);
+
+            // Get the baseline max health
+            float baselineMax = GetCharacterMaxHealthBase(character);
+
+            if (!_originalHealth.ContainsKey(key))
+                _originalHealth[key] = baselineMax;
+
+            float originalMax = _originalHealth[key];
+            float newMax = originalMax * maxHealthMult;
+
+            // Calculate current health percentage to preserve it
+            float currentHealth = character.m_health;
+            float currentMax = GetCharacterMaxHealthBase(character);
+            float healthPercent = (currentMax > 0) ? (currentHealth / currentMax) : 1f;
+
+            // Apply the new max health while preserving percentage
+            SetCharacterMaxHealth(character, newMax);
+
+            // Restore health percentage (clamp to new max to be safe)
+            character.m_health = Mathf.Min(newMax * healthPercent, newMax);
+
+            if (CreaturePrefabCreatorPlugin.Instance?.ConfigDebugAIState?.Value == true)
+                CreaturePrefabCreatorPlugin.Instance.Log(
+                    $"[RuntimeModifier] '{character.gameObject.name}' (key={key}): maxHealth (advanced) {originalMax} × {maxHealthMult} = {newMax} (preserved {healthPercent:P0} health)");
+        }
+
         private static void RestoreHealth(Character character)
         {
             ZDOID key = GetCreatureKey(character);
@@ -741,6 +883,44 @@ namespace CreaturePrefabCreator.RuntimeModifiers
                 CreaturePrefabCreatorPlugin.Instance.Log(
                     $"[RuntimeModifier] '{character.gameObject.name}' (key={key}): speed ×{mult} " +
                     $"(walk {snap.WalkSpeed}→{character.m_walkSpeed}, run {snap.RunSpeed}→{character.m_runSpeed})");
+        }
+
+        /// <summary>
+        /// Applies per-type speed multipliers from advanced movementSpeed config.
+        /// Each speed type can have its own multiplier.
+        /// </summary>
+        private static void ApplySpeedAdvanced(Character character, MovementSpeedMultipliers multipliers)
+        {
+            ZDOID key = GetCreatureKey(character);
+
+            if (!_originalSpeeds.ContainsKey(key))
+            {
+                _originalSpeeds[key] = new SpeedSnapshot
+                {
+                    Speed = character.m_speed,
+                    WalkSpeed = character.m_walkSpeed,
+                    RunSpeed = character.m_runSpeed,
+                    SwimSpeed = character.m_swimSpeed
+                };
+            }
+
+            var snap = _originalSpeeds[key];
+
+            // Apply per-type multipliers
+            if (multipliers.Base != 1f)
+                character.m_speed = snap.Speed * multipliers.Base;
+            if (multipliers.Walk != 1f)
+                character.m_walkSpeed = snap.WalkSpeed * multipliers.Walk;
+            if (multipliers.Run != 1f)
+                character.m_runSpeed = snap.RunSpeed * multipliers.Run;
+            if (multipliers.Swim != 1f)
+                character.m_swimSpeed = snap.SwimSpeed * multipliers.Swim;
+
+            if (CreaturePrefabCreatorPlugin.Instance?.ConfigDebugAIState?.Value == true)
+                CreaturePrefabCreatorPlugin.Instance.Log(
+                    $"[RuntimeModifier] '{character.gameObject.name}' (key={key}): advanced speed multipliers applied " +
+                    $"(base:{multipliers.Base}, walk:{multipliers.Walk}, run:{multipliers.Run}, swim:{multipliers.Swim}) " +
+                    $"walk {snap.WalkSpeed}→{character.m_walkSpeed}, run {snap.RunSpeed}→{character.m_runSpeed}");
         }
 
         private static void RestoreSpeed(Character character)

@@ -1,4 +1,5 @@
 using System.Runtime.Serialization;
+using CreaturePrefabCreator.Config.Advanced;
 
 namespace CreaturePrefabCreator.Config
 {
@@ -65,6 +66,10 @@ namespace CreaturePrefabCreator.Config
         [DataMember(Name = "enableAI", IsRequired = false)]
         public bool? EnableAI { get; set; } = null;
 
-        public bool IsEmpty => HealthMultiplier == null && DamageMultiplier == null && MovementSpeedMultiplier == null && DisableAI == null && EnableAI == null;
+        // Advanced modifier configuration (optional, backwards-compatible)
+        [DataMember(Name = "advanced", IsRequired = false)]
+        public AdvancedModifierConfig Advanced { get; set; } = null;
+
+        public bool IsEmpty => HealthMultiplier == null && DamageMultiplier == null && MovementSpeedMultiplier == null && DisableAI == null && EnableAI == null && Advanced == null;
     }
 }

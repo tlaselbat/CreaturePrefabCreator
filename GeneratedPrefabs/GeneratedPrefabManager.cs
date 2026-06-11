@@ -1,6 +1,8 @@
 using CreaturePrefabCreator.Config;
+using CreaturePrefabCreator.Config.Advanced;
 using CreaturePrefabCreator.Overrides;
 using CreaturePrefabCreator.Patches;
+using CreaturePrefabCreator.Utilities;
 using Jotunn.Entities;
 using Jotunn.Managers;
 using System;
@@ -436,15 +438,25 @@ namespace CreaturePrefabCreator.GeneratedPrefabs
                 CreaturePrefabCreatorPlugin.Instance.Log($"[FeatureSafety] Skipping faction override for generated '{config.NewPrefab}' - EnableFactionOverrides is false.");
             }
 
-            // 7d. Apply stat multipliers (health/damage) before registration
+            // 7d. Apply stat multipliers (health/damage/movement/advanced) before registration
             // Priority: direct override > generated config > inherited from source override
             var directStats = PrefabOverrideManager.GetDirectOverrideStatMultipliers(config.NewPrefab);
             var inheritedStats = GetInheritedStatMultipliers(config.SourcePrefab);
             float? effectiveHealthMult = directStats.health ?? config.HealthMultiplier ?? inheritedStats.health;
             float? effectiveDamageMult = directStats.damage ?? config.DamageMultiplier ?? inheritedStats.damage;
-            ApplyStatOverrides(setupClone, config.NewPrefab, effectiveHealthMult, effectiveDamageMult);
 
-            // 7e. Apply Phase 1 parameters (AI, audio, visual, faction controls)
+            // Resolve advanced death effect settings
+            var deathEffectResult = ModifierResolver.ResolveDeathEffect(config.Advanced,
+                config.ClearDeathEffects, config.CopyDeathEffectsFrom, config.DeathEffectScaleMultiplier);
+
+            // Apply advanced stat overrides including health, damage, movement speed, AI
+            ApplyStatOverrides(setupClone, config.NewPrefab, effectiveHealthMult, effectiveDamageMult,
+                null, config.Advanced, factionOverridesEnabled);
+
+            // Apply advanced death effects if configured
+            ApplyAdvancedDeathEffects(setupClone, config.NewPrefab, deathEffectResult);
+
+            // 7e. Apply Phase 1 parameters (AI, audio, visual, faction controls) - legacy fields
             ApplyPhase1Parameters(setupClone, config.NewPrefab, config);
 
             // 8. Attach growth component if enabled
@@ -1023,6 +1035,373 @@ namespace CreaturePrefabCreator.GeneratedPrefabs
                 LogField("lightning", origLightning, clonedShared.m_damages.m_lightning);
                 LogField("poison",    origPoison,    clonedShared.m_damages.m_poison);
                 LogField("spirit",    origSpirit,    clonedShared.m_damages.m_spirit);
+            }
+        }
+
+        /// <summary>
+        /// Applies health, damage, movement speed, AI, and death effect overrides using advanced modifier config.
+        /// This overload resolves legacy and advanced fields using ModifierResolver and applies Tier 1 fields.
+        /// </summary>
+        internal static void ApplyStatOverrides(GameObject prefab, string prefabName, float? healthMult, float? damageMult,
+            float? movementSpeedMult, AdvancedModifierConfig advanced, bool enableFactionOverrides)
+        {
+            // Log unsupported Tier 2/3 fields once per prefab
+            if (advanced?.HasAnyValue == true)
+            {
+                ModifierValidation.LogUnsupportedFields($"GeneratedPrefab:{prefabName}", advanced);
+            }
+
+            // --- Health block with advanced support ---
+            var character = prefab.GetComponent<Character>();
+            if (character != null)
+            {
+                // Check for maxHealth first (absolute value)
+                float? maxHealth = ModifierResolver.ResolveMaxHealth(advanced);
+                if (maxHealth.HasValue)
+                {
+                    float mh = maxHealth.Value;
+                    if (ModifierValidation.IsValidMultiplier(mh, out _))
+                    {
+                        float original = character.m_health;
+                        character.m_health = original * mh;
+                        CreaturePrefabCreatorPlugin.Instance?.Log($"[StatOverride] '{prefabName}': health {original} × {mh} (advanced.maxHealth) = {character.m_health}");
+                    }
+                }
+                else
+                {
+                    // Fall back to resolved health multiplier
+                    float? resolvedHealth = ModifierResolver.ResolveHealthMultiplier(advanced, healthMult);
+                    if (resolvedHealth.HasValue)
+                    {
+                        float h = resolvedHealth.Value;
+                        if (ModifierValidation.IsIdentityValue(h))
+                        {
+                            // no-op
+                        }
+                        else if (!ModifierValidation.IsValidMultiplier(h, out _))
+                        {
+                            CreaturePrefabCreatorPlugin.Instance?.LogWarning($"[StatOverride] '{prefabName}': healthMultiplier {h} is out of range [0.01, 100]; skipping.");
+                        }
+                        else
+                        {
+                            if (h > 10f)
+                                CreaturePrefabCreatorPlugin.Instance?.LogWarning($"[StatOverride] '{prefabName}': healthMultiplier {h} is very large (>10); applying.");
+                            float original = character.m_health;
+                            character.m_health = original * h;
+                            CreaturePrefabCreatorPlugin.Instance?.Log($"[StatOverride] '{prefabName}': health {original} × {h} = {character.m_health}");
+                        }
+                    }
+                }
+            }
+            else
+            {
+                CreaturePrefabCreatorPlugin.Instance?.Log($"[StatOverride] '{prefabName}': no Character component, skipping health.");
+            }
+
+            // --- Damage block with advanced per-type support ---
+            var humanoid = prefab.GetComponent<Humanoid>();
+            if (humanoid != null)
+            {
+                var damageMultipliers = ModifierResolver.ResolveDamageMultipliers(advanced, damageMult);
+                if (damageMultipliers.HasAnyValue)
+                {
+                    ApplyAdvancedDamageMultipliers(prefab, prefabName, humanoid, damageMultipliers);
+                }
+            }
+            else
+            {
+                CreaturePrefabCreatorPlugin.Instance?.Log($"[StatOverride] '{prefabName}': no Humanoid component, skipping damage.");
+            }
+
+            // --- Movement Speed block with advanced support ---
+            if (character != null)
+            {
+                var speedMultipliers = ModifierResolver.ResolveMovementSpeedMultipliers(advanced, movementSpeedMult);
+                if (speedMultipliers.HasAnyValue)
+                {
+                    ApplyAdvancedMovementSpeed(prefab, prefabName, character, speedMultipliers);
+                }
+            }
+
+            // --- AI block with advanced support ---
+            if (advanced?.AI != null)
+            {
+                // Note: legacy disableAI is handled in ApplyPhase1Parameters, but we check for advanced AI here
+                var aiResult = ModifierResolver.ResolveAIModifiers(advanced, false, null);
+                if (aiResult.HasAnyValue)
+                {
+                    ApplyAdvancedAI(prefab, prefabName, aiResult);
+                }
+            }
+
+            // --- Death Effect block with advanced support ---
+            // This is handled in the calling code alongside legacy death effect fields
+        }
+
+        /// <summary>
+        /// Applies per-type damage multipliers to the humanoid's attack items.
+        /// </summary>
+        private static void ApplyAdvancedDamageMultipliers(GameObject prefab, string prefabName, Humanoid humanoid, DamageMultipliers multipliers)
+        {
+            if (humanoid.m_defaultItems == null || humanoid.m_defaultItems.Length == 0)
+            {
+                CreaturePrefabCreatorPlugin.Instance?.Log($"[StatOverride] '{prefabName}': no defaultItems, skipping advanced damage.");
+                return;
+            }
+
+            for (int i = 0; i < humanoid.m_defaultItems.Length; i++)
+            {
+                GameObject item = humanoid.m_defaultItems[i];
+                if (item == null) continue;
+
+                // Clone the attack item if not already cloned
+                GameObject clonedItem = UnityEngine.Object.Instantiate(item);
+                if (clonedItem == null) continue;
+
+                clonedItem.name = $"{prefabName}_{item.name}_AdvancedDamageOverride";
+                clonedItem.transform.SetParent(GetOrCreatePrefabContainer().transform, false);
+                humanoid.m_defaultItems[i] = clonedItem;
+
+                var itemDrop = clonedItem.GetComponent<ItemDrop>();
+                if (itemDrop?.m_itemData?.m_shared == null) continue;
+
+                var clonedShared = CloneSharedData(itemDrop.m_itemData.m_shared);
+                if (clonedShared == null) continue;
+
+                // Store original values for logging
+                float origDamage = clonedShared.m_damages.m_damage;
+                float origBlunt = clonedShared.m_damages.m_blunt;
+                float origSlash = clonedShared.m_damages.m_slash;
+                float origPierce = clonedShared.m_damages.m_pierce;
+                float origChop = clonedShared.m_damages.m_chop;
+                float origPickaxe = clonedShared.m_damages.m_pickaxe;
+                float origFire = clonedShared.m_damages.m_fire;
+                float origFrost = clonedShared.m_damages.m_frost;
+                float origLightning = clonedShared.m_damages.m_lightning;
+                float origPoison = clonedShared.m_damages.m_poison;
+                float origSpirit = clonedShared.m_damages.m_spirit;
+
+                // Apply per-type multipliers
+                clonedShared.m_damages.m_damage = origDamage * multipliers.Base;
+                clonedShared.m_damages.m_blunt = origBlunt * multipliers.Blunt;
+                clonedShared.m_damages.m_slash = origSlash * multipliers.Slash;
+                clonedShared.m_damages.m_pierce = origPierce * multipliers.Pierce;
+                clonedShared.m_damages.m_chop = origChop * multipliers.Chop;
+                clonedShared.m_damages.m_pickaxe = origPickaxe * multipliers.Pickaxe;
+                clonedShared.m_damages.m_fire = origFire * multipliers.Fire;
+                clonedShared.m_damages.m_frost = origFrost * multipliers.Frost;
+                clonedShared.m_damages.m_lightning = origLightning * multipliers.Lightning;
+                clonedShared.m_damages.m_poison = origPoison * multipliers.Poison;
+                clonedShared.m_damages.m_spirit = origSpirit * multipliers.Spirit;
+
+                itemDrop.m_itemData.m_shared = clonedShared;
+
+                // Log fields that were actually changed
+                void LogFieldAdv(string field, float orig, float multiplier)
+                {
+                    if (orig != 0f && multiplier != 1f)
+                        CreaturePrefabCreatorPlugin.Instance?.Log($"[StatOverride] '{prefabName}' '{clonedItem.name}': {field} {orig} × {multiplier} = {orig * multiplier}");
+                }
+                LogFieldAdv("damage", origDamage, multipliers.Base);
+                LogFieldAdv("blunt", origBlunt, multipliers.Blunt);
+                LogFieldAdv("slash", origSlash, multipliers.Slash);
+                LogFieldAdv("pierce", origPierce, multipliers.Pierce);
+                LogFieldAdv("chop", origChop, multipliers.Chop);
+                LogFieldAdv("pickaxe", origPickaxe, multipliers.Pickaxe);
+                LogFieldAdv("fire", origFire, multipliers.Fire);
+                LogFieldAdv("frost", origFrost, multipliers.Frost);
+                LogFieldAdv("lightning", origLightning, multipliers.Lightning);
+                LogFieldAdv("poison", origPoison, multipliers.Poison);
+                LogFieldAdv("spirit", origSpirit, multipliers.Spirit);
+            }
+        }
+
+        /// <summary>
+        /// Applies advanced movement speed multipliers to Character speed fields.
+        /// </summary>
+        private static void ApplyAdvancedMovementSpeed(GameObject prefab, string prefabName, Character character, MovementSpeedMultipliers multipliers)
+        {
+            if (multipliers.Base != 1f)
+            {
+                float original = character.m_speed;
+                character.m_speed = original * multipliers.Base;
+                CreaturePrefabCreatorPlugin.Instance?.Log($"[StatOverride] '{prefabName}': speed (base) {original} × {multipliers.Base} = {character.m_speed}");
+            }
+
+            if (multipliers.Walk != 1f)
+            {
+                float original = character.m_walkSpeed;
+                character.m_walkSpeed = original * multipliers.Walk;
+                CreaturePrefabCreatorPlugin.Instance?.Log($"[StatOverride] '{prefabName}': walkSpeed {original} × {multipliers.Walk} = {character.m_walkSpeed}");
+            }
+
+            if (multipliers.Run != 1f)
+            {
+                float original = character.m_runSpeed;
+                character.m_runSpeed = original * multipliers.Run;
+                CreaturePrefabCreatorPlugin.Instance?.Log($"[StatOverride] '{prefabName}': runSpeed {original} × {multipliers.Run} = {character.m_runSpeed}");
+            }
+
+            if (multipliers.Swim != 1f)
+            {
+                float original = character.m_swimSpeed;
+                character.m_swimSpeed = original * multipliers.Swim;
+                CreaturePrefabCreatorPlugin.Instance?.Log($"[StatOverride] '{prefabName}': swimSpeed {original} × {multipliers.Swim} = {character.m_swimSpeed}");
+            }
+        }
+
+        /// <summary>
+        /// Applies advanced AI modifiers to MonsterAI component.
+        /// </summary>
+        private static void ApplyAdvancedAI(GameObject prefab, string prefabName, AIModifierResult aiResult)
+        {
+            var monsterAI = prefab.GetComponent<MonsterAI>();
+            if (monsterAI == null)
+            {
+                CreaturePrefabCreatorPlugin.Instance?.LogWarning($"[AI] '{prefabName}': no MonsterAI component, skipping advanced AI settings.");
+                return;
+            }
+
+            var config = aiResult.MonsterAIConfig;
+            if (config == null) return;
+
+            // Apply Tier 1 MonsterAI fields
+            if (config.Enabled.HasValue)
+            {
+                monsterAI.enabled = config.Enabled.Value;
+                CreaturePrefabCreatorPlugin.Instance?.Log($"[AI] '{prefabName}': MonsterAI.enabled = {config.Enabled.Value}");
+
+                // Add marker when disabling AI
+                if (!config.Enabled.Value && prefab.GetComponent<PermanentAIDisabledMarker>() == null)
+                {
+                    prefab.AddComponent<PermanentAIDisabledMarker>();
+                }
+            }
+
+            if (config.Aggravatable.HasValue)
+            {
+                monsterAI.m_aggravatable = config.Aggravatable.Value;
+                CreaturePrefabCreatorPlugin.Instance?.Log($"[AI] '{prefabName}': MonsterAI.m_aggravatable = {config.Aggravatable.Value}");
+            }
+
+            // Use reflection for fields that may be version-sensitive
+            if (config.FleeIfNotAlerted.HasValue)
+            {
+                SetMonsterAIField(monsterAI, "m_fleeIfNotAlerted", config.FleeIfNotAlerted.Value);
+                CreaturePrefabCreatorPlugin.Instance?.Log($"[AI] '{prefabName}': MonsterAI.m_fleeIfNotAlerted = {config.FleeIfNotAlerted.Value}");
+            }
+
+            if (config.FleeInLava.HasValue)
+            {
+                SetMonsterAIField(monsterAI, "m_fleeInLava", config.FleeInLava.Value);
+                CreaturePrefabCreatorPlugin.Instance?.Log($"[AI] '{prefabName}': MonsterAI.m_fleeInLava = {config.FleeInLava.Value}");
+            }
+
+            if (config.FleeRange.HasValue)
+            {
+                SetMonsterAIField(monsterAI, "m_fleeRange", config.FleeRange.Value);
+                CreaturePrefabCreatorPlugin.Instance?.Log($"[AI] '{prefabName}': MonsterAI.m_fleeRange = {config.FleeRange.Value}");
+            }
+
+            if (config.FriendAttacked.HasValue)
+            {
+                SetMonsterAIField(monsterAI, "m_friendAttacked", config.FriendAttacked.Value);
+                CreaturePrefabCreatorPlugin.Instance?.Log($"[AI] '{prefabName}': MonsterAI.m_friendAttacked = {config.FriendAttacked.Value}");
+            }
+        }
+
+        /// <summary>
+        /// Applies advanced death effect configuration to the prefab.
+        /// Handles modes: vanilla, none, copyFrom (customPrefab is Tier 3/no-op).
+        /// </summary>
+        private static void ApplyAdvancedDeathEffects(GameObject prefab, string prefabName, DeathEffectResult deathEffect)
+        {
+            if (!deathEffect.HasAnyValue)
+                return;
+
+            // Validate mode
+            if (!string.IsNullOrWhiteSpace(deathEffect.Mode))
+            {
+                var validModes = new[] { "vanilla", "none", "copyFrom", "customPrefab" };
+                bool isValid = false;
+                foreach (var valid in validModes)
+                {
+                    if (deathEffect.Mode.Equals(valid, System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        isValid = true;
+                        break;
+                    }
+                }
+                if (!isValid)
+                {
+                    CreaturePrefabCreatorPlugin.Instance?.LogWarning($"[DeathEffect] '{prefabName}': Invalid mode '{deathEffect.Mode}'. Valid values: vanilla, none, copyFrom, customPrefab");
+                    return;
+                }
+            }
+
+            var character = prefab.GetComponent<Character>();
+            if (character == null)
+            {
+                CreaturePrefabCreatorPlugin.Instance?.LogWarning($"[DeathEffect] '{prefabName}': no Character component, cannot apply death effects.");
+                return;
+            }
+
+            // Handle mode "none" - clear death effects
+            if (deathEffect.Mode?.Equals("none", System.StringComparison.OrdinalIgnoreCase) == true)
+            {
+                character.m_deathEffects = new EffectList();
+                CreaturePrefabCreatorPlugin.Instance?.Log($"[DeathEffect] '{prefabName}': cleared death effects (mode=none).");
+            }
+
+            // Handle mode "copyFrom" - copy from another prefab
+            else if (deathEffect.Mode?.Equals("copyFrom", System.StringComparison.OrdinalIgnoreCase) == true)
+            {
+                if (string.IsNullOrWhiteSpace(deathEffect.CopyFrom))
+                {
+                    CreaturePrefabCreatorPlugin.Instance?.LogWarning($"[DeathEffect] '{prefabName}': mode=copyFrom but copyFrom is empty. Skipping.");
+                    return;
+                }
+
+                GameObject sourcePrefab = FindSourcePrefab(deathEffect.CopyFrom);
+                if (sourcePrefab == null)
+                {
+                    CreaturePrefabCreatorPlugin.Instance?.LogWarning($"[DeathEffect] '{prefabName}': copyFrom source '{deathEffect.CopyFrom}' not found. Skipping.");
+                    return;
+                }
+
+                var sourceChar = sourcePrefab.GetComponent<Character>();
+                if (sourceChar == null)
+                {
+                    CreaturePrefabCreatorPlugin.Instance?.LogWarning($"[DeathEffect] '{prefabName}': copyFrom source '{deathEffect.CopyFrom}' has no Character component. Skipping.");
+                    return;
+                }
+
+                // Clear existing if requested
+                if (deathEffect.ClearExisting.HasValue && deathEffect.ClearExisting.Value)
+                {
+                    character.m_deathEffects = new EffectList();
+                    CreaturePrefabCreatorPlugin.Instance?.Log($"[DeathEffect] '{prefabName}': cleared existing death effects before copy.");
+                }
+
+                // Copy effects from source
+                var srcEffects = sourceChar.m_deathEffects?.m_effectPrefabs;
+                character.m_deathEffects = new EffectList();
+                character.m_deathEffects.m_effectPrefabs = srcEffects?.ToArray();
+                int count = character.m_deathEffects.m_effectPrefabs?.Length ?? 0;
+                CreaturePrefabCreatorPlugin.Instance?.Log($"[DeathEffect] '{prefabName}': copied {count} death effect(s) from '{deathEffect.CopyFrom}'.");
+            }
+
+            // Handle mode "customPrefab" - Tier 3 (no-op with warning)
+            else if (deathEffect.Mode?.Equals("customPrefab", System.StringComparison.OrdinalIgnoreCase) == true)
+            {
+                CreaturePrefabCreatorPlugin.Instance?.LogWarning($"[DeathEffect] '{prefabName}': mode=customPrefab is Tier 3 (not implemented). Using vanilla death effects.");
+            }
+
+            // Apply scale multiplier if provided
+            if (deathEffect.ScaleMultiplier.HasValue)
+            {
+                RagdollScalePatch.RegisterDeathEffectScaleMultiplier(prefabName, deathEffect.ScaleMultiplier.Value);
+                CreaturePrefabCreatorPlugin.Instance?.Log($"[DeathEffect] '{prefabName}': registered deathEffectScaleMultiplier={deathEffect.ScaleMultiplier.Value}");
             }
         }
 
