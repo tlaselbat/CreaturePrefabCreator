@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace CreaturePrefabCreator
 {
-    [BepInPlugin("com.clickcs.creatureprefabcreator", "CreaturePrefabCreator", "0.1.0")]
+    [BepInPlugin("com.clickcs.creatureprefabcreator", "CreaturePrefabCreator", "1.0.0")]
     [BepInDependency("com.jotunn.jotunn", BepInDependency.DependencyFlags.HardDependency)]
     public class CreaturePrefabCreatorPlugin : BaseUnityPlugin
     {
