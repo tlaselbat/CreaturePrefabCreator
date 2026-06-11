@@ -82,7 +82,7 @@ namespace CreaturePrefabCreator.Config.Advanced
             (AI?.HasTier3DisableEnable ?? false) ||
             (AI?.MonsterAI?.HasTier3Value ?? false) ||
             (Combat?.HasTier3Value ?? false) ||
-            (Physics?.HasAnyValue ?? true) ||
+            (Physics?.HasAnyValue ?? false) ||
             (Interaction?.HasTier3Value ?? false) ||
             (DropsAndDeath?.HasTier3Value ?? false);
     }

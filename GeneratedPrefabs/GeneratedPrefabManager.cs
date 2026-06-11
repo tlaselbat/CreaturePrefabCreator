@@ -104,6 +104,27 @@ namespace CreaturePrefabCreator.GeneratedPrefabs
         }
 
         /// <summary>
+        /// Snapshots the current localScale of each source prefab referenced by the given generated
+        /// prefab configs, capturing the vanilla (pre-override) scale.
+        /// MUST be called BEFORE PrefabOverrideManager.ReapplyAll/ApplyAll so the scale stored is
+        /// the true original and not a value already multiplied by a previous override pass.
+        /// </summary>
+        public static void CaptureOriginalSourceScales(List<GeneratedPrefabConfig> configs)
+        {
+            if (configs == null) return;
+            foreach (var cfg in configs)
+            {
+                if (!cfg.Enabled || string.IsNullOrEmpty(cfg.SourcePrefab)) continue;
+                if (OriginalPrefabScales.ContainsKey(cfg.SourcePrefab)) continue;
+                var prefab = FindSourcePrefab(cfg.SourcePrefab);
+                if (prefab == null) continue;
+                OriginalPrefabScales[cfg.SourcePrefab] = prefab.transform.localScale;
+                CreaturePrefabCreatorPlugin.Instance?.Log(
+                    $"[ScaleCapture] '{cfg.SourcePrefab}': captured originalSourceScale={prefab.transform.localScale} before override pass.");
+            }
+        }
+
+        /// <summary>
         /// P2: Re-register all generated prefabs from a fresh config list.
         /// Used by runtime config reload. Existing spawned instances still reference old templates.
         /// </summary>
@@ -114,7 +135,9 @@ namespace CreaturePrefabCreator.GeneratedPrefabs
             InheritedMultipliers.Clear();
             InheritedHealthMultipliers.Clear();
             InheritedDamageMultipliers.Clear();
-            OriginalPrefabScales.Clear();
+            // OriginalPrefabScales is intentionally NOT cleared here.
+            // It was populated by CaptureOriginalSourceScales() before PrefabOverrideManager.ReapplyAll()
+            // mutated the source prefabs. Clearing it here would cause scale compounding on each reload.
             InheritedFactions.Clear();
 
             GenerateAll(configs, factionOverridesEnabled);

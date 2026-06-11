@@ -93,6 +93,7 @@ namespace CreaturePrefabCreator
             if (ConfigRegisterConsoleCommands.Value)
             {
                 Debug.CreaturePrefabDebugCommands.Register();
+                Debug.CpcBetaCommands.Register();
             }
 
             if (ConfigEnableDebugDumpCommands.Value)

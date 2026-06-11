@@ -497,6 +497,11 @@ namespace CreaturePrefabCreator.Debug
                 bool doPrefabs = !runtimeOnly && (prefabsOnly || (!prefabsOnly && !runtimeOnly));
                 bool doRuntime = !prefabsOnly && (runtimeOnly || (!prefabsOnly && !runtimeOnly));
 
+                if (doPrefabs)
+                {
+                    GeneratedPrefabManager.CaptureOriginalSourceScales(newConfig.GeneratedPrefabs);
+                }
+
                 if (doPrefabs && plugin.ConfigEnablePrefabOverrides.Value)
                 {
                     PrefabOverrideManager.ReapplyAll(newConfig.PrefabOverrides, plugin.ConfigEnableFactionOverrides.Value);
@@ -599,6 +604,7 @@ namespace CreaturePrefabCreator.Debug
                 // 4. Re-initialize runtime modifiers
                 if (doRuntime && plugin.ConfigEnableRuntimeModifiers.Value)
                 {
+                    Utilities.ModifierValidation.ClearWarningTracking();
                     RuntimeModifierManager.ClearAll();
                     RuntimeModifierManager.Initialize(newConfig.RuntimeModifiers);
                     plugin.Log($"[cpc_reload_config] Runtime modifiers reloaded: {newConfig.RuntimeModifiers?.Count ?? 0} rules.");

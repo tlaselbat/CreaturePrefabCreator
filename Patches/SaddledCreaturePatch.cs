@@ -365,7 +365,7 @@ namespace CreaturePrefabCreator.Patches
 
         /// <summary>
         /// Canonical saddle detection using the same cached reflection as IsActivelyRidden.
-        /// Priority: Tameable.m_saddle + HaveSaddle() → Sadle component → MountUp getSaddle/getSadle → Humanoid inventory "Saddle".
+        /// Priority: Tameable.HaveSaddle() (authoritative, early-exit) → Sadle.HaveValidUser() → MountUp getSaddle/getSadle → Humanoid inventory "Saddle".
         /// Call SaddledCreaturePatch.Initialize() before first use.
         /// </summary>
         public static bool IsSaddledViaCanonicalPath(Character character)
@@ -374,34 +374,47 @@ namespace CreaturePrefabCreator.Patches
 
             bool debug = CreaturePrefabCreatorPlugin.Instance?.ConfigDebugAIState?.Value == true;
 
-            // 1. HIGHEST confidence: Tameable.m_saddle + HaveSaddle()
-            if (_tameableType != null && _tameableSaddleField != null && _tameableHaveSaddleMethod != null)
+            // 1. HIGHEST confidence: Tameable.HaveSaddle()
+            // NOTE: Do NOT gate on m_saddle != null — Wolves always have a Sadle component ref on m_saddle
+            // even without a saddle equipped. HaveSaddle() is the authoritative query.
+            if (_tameableType != null && _tameableHaveSaddleMethod != null)
             {
                 var tameable = character.GetComponent(_tameableType);
                 if (tameable != null)
                 {
                     try
                     {
-                        object saddleInstance = _tameableSaddleField.GetValue(tameable);
-                        bool hasSaddle = saddleInstance != null && (bool)_tameableHaveSaddleMethod.Invoke(tameable, null);
+                        bool hasSaddle = (bool)_tameableHaveSaddleMethod.Invoke(tameable, null);
                         if (hasSaddle)
                         {
-                            if (debug) CreaturePrefabCreatorPlugin.Instance.Log($"[IsSaddled] {character.name}: true (Tameable.m_saddle + HaveSaddle)");
+                            if (debug) CreaturePrefabCreatorPlugin.Instance.Log($"[IsSaddled] {character.name}: true (Tameable.HaveSaddle)");
                             return true;
                         }
+                        // HaveSaddle resolved and returned false — trust it, skip further checks
+                        if (debug) CreaturePrefabCreatorPlugin.Instance.Log($"[IsSaddled] {character.name}: false (Tameable.HaveSaddle=false)");
+                        return false;
                     }
                     catch { }
                 }
             }
 
-            // 2. MEDIUM confidence: Sadle component on self or children
-            if (_sadleType != null)
+            // 2. MEDIUM confidence: Sadle component present AND HaveValidUser (saddle is actually equipped/active)
+            // A Sadle component exists on Wolf/Lox by default — presence alone is not sufficient.
+            if (_sadleType != null && _sadleHaveValidUserMethod != null)
             {
                 var sadle = character.GetComponent(_sadleType) ?? character.GetComponentInChildren(_sadleType, true);
                 if (sadle != null)
                 {
-                    if (debug) CreaturePrefabCreatorPlugin.Instance.Log($"[IsSaddled] {character.name}: true (Sadle component)");
-                    return true;
+                    try
+                    {
+                        bool validUser = (bool)_sadleHaveValidUserMethod.Invoke(sadle, null);
+                        if (validUser)
+                        {
+                            if (debug) CreaturePrefabCreatorPlugin.Instance.Log($"[IsSaddled] {character.name}: true (Sadle.HaveValidUser)");
+                            return true;
+                        }
+                    }
+                    catch { }
                 }
             }
 
