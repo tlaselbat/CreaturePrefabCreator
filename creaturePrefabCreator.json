@@ -117,7 +117,7 @@
       "enabled": true,
       "adultPrefab": null,
       "displayName": "Red Dire Wolf",
-      "scale": 1.2,
+      "scale": 1.8,
       "growIntoAdult": false,
       "growTimeSeconds": 0,
       "preserveTamed": false,
@@ -322,7 +322,7 @@
   "runtimeModifiers": [
     {
       "targetPrefab": "Wolf",
-      "enabled": true,
+      "enabled": false,
       "conditions": {
         "saddled": true,
         "ridden": false
@@ -335,11 +335,17 @@
       "targetPrefab": "Wolf_red_dire",
       "enabled": true,
       "conditions": {
-        "saddled": true,
-        "ridden": false
+        "tamed": true
       },
       "effects": {
-        "disableAI": true
+        "enableAI": true,
+        "advanced": {
+          "ai": {
+            "monsterAI": {
+              "enabled": true
+            }
+          }
+        }
       }
     },
     {

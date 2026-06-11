@@ -1,5 +1,6 @@
 using CreaturePrefabCreator.Config;
 using CreaturePrefabCreator.Config.Advanced;
+using CreaturePrefabCreator.Core;
 using CreaturePrefabCreator.GeneratedPrefabs;
 using CreaturePrefabCreator.Patches;
 using CreaturePrefabCreator.Utilities;
@@ -14,8 +15,8 @@ namespace CreaturePrefabCreator.Overrides
     public static class PrefabOverrideManager
     {
         private static readonly HashSet<string> AppliedOverrides = new HashSet<string>();
-        // Track original scales to ensure absolute scaling relative to prefab's original
-        private static readonly Dictionary<string, Vector3> OriginalScales = new Dictionary<string, Vector3>();
+        // NOTE: OriginalScales removed - now using centralized PrefabBaselineCache
+        // This prevents recapturing mutated values during reload
 
         // Cache configs for direct-override lookup by generated prefab managers
         private static List<PrefabOverrideConfig> _allConfigs;
@@ -60,23 +61,29 @@ namespace CreaturePrefabCreator.Overrides
 
         /// <summary>
         /// Clears all applied overrides and cached state. Call on world unload or config reload.
+        /// NOTE: Does NOT clear original baselines - those are managed by PrefabBaselineCache
+        /// and must persist across reloads to prevent scale compounding.
         /// </summary>
         public static void ClearAll()
         {
             AppliedOverrides.Clear();
-            OriginalScales.Clear();
+            // CRITICAL: Do NOT clear PrefabBaselineCache here - baselines must persist
             _allConfigs = null;
         }
 
         /// <summary>
         /// P2: Re-apply all prefab overrides from a fresh config list.
         /// Used by runtime config reload.
+        /// CRITICAL: Baselines are managed by PrefabBaselineCache and persist across reloads.
         /// </summary>
         public static void ReapplyAll(List<PrefabOverrideConfig> configs, bool factionOverridesEnabled = false)
         {
             CreaturePrefabCreatorPlugin.Instance?.Log("[Reload] Clearing prefab override registrations...");
             AppliedOverrides.Clear();
-            OriginalScales.Clear();
+            // CRITICAL: PrefabBaselineCache baselines are NEVER cleared during reload.
+            // They were captured from clean vanilla prefabs during initial boot.
+            // Clearing them would cause recapture of already-mutated ZNetScene prefabs,
+            // leading to scale compounding on every cpc_reload_config invocation.
             _allConfigs = null;
             ApplyAll(configs, factionOverridesEnabled);
         }
@@ -239,12 +246,23 @@ namespace CreaturePrefabCreator.Overrides
             }
 
             // Apply absolute scale relative to prefab's original scale
-            if (!OriginalScales.ContainsKey(config.TargetPrefab))
+            // CRITICAL: Use PrefabBaselineCache to get original scale, never read from already-mutated prefab
+            Vector3 originalScale = PrefabBaselineCache.GetOriginalScale(config.TargetPrefab);
+            // If baseline wasn't captured yet (safety net), capture from current prefab but warn
+            if (!PrefabBaselineCache.HasOriginalScale(config.TargetPrefab))
             {
-                OriginalScales[config.TargetPrefab] = targetPrefab.transform.localScale;
+                PrefabBaselineCache.CaptureOriginalScale(config.TargetPrefab, targetPrefab);
+                originalScale = PrefabBaselineCache.GetOriginalScale(config.TargetPrefab);
+                CreaturePrefabCreatorPlugin.Instance?.LogWarning(
+                    $"[PrefabOverrideManager] Late baseline capture for '{config.TargetPrefab}' - " +
+                    "this should have been captured during boot. Verify PrefabBaselineCache is initialized before overrides."
+                );
             }
-            Vector3 originalScale = OriginalScales[config.TargetPrefab];
-            targetPrefab.transform.localScale = originalScale * config.Scale;
+            Vector3 finalScale = originalScale * config.Scale;
+            targetPrefab.transform.localScale = finalScale;
+            CreaturePrefabCreatorPlugin.Instance?.Log(
+                $"[Scale] {config.TargetPrefab}: {originalScale} * {config.Scale} = {finalScale}"
+            );
 
             // Clear death effects if requested (e.g. vanilla Wolf_cub has a broken ragdoll death effect)
             if (config.ClearDeathEffects)

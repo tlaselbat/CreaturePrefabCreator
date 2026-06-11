@@ -1,5 +1,9 @@
 using CreaturePrefabCreator.Config;
 using CreaturePrefabCreator.Config.Advanced;
+using CreaturePrefabCreator.Core;
+using CreaturePrefabCreator.Detection;
+using CreaturePrefabCreator.GeneratedPrefabs;
+using CreaturePrefabCreator.Overrides;
 using CreaturePrefabCreator.Patches;
 using CreaturePrefabCreator.RuntimeModifiers;
 using CreaturePrefabCreator.Utilities;
@@ -34,10 +38,12 @@ namespace CreaturePrefabCreator.Debug
                 CommandManager.Instance.AddConsoleCommand(new RuntimeTraceCommand());
                 CommandManager.Instance.AddConsoleCommand(new RestoreTargetCommand());
                 CommandManager.Instance.AddConsoleCommand(new CheckSaddledCommand());
+                CommandManager.Instance.AddConsoleCommand(new MountTraceCommand());
+                CommandManager.Instance.AddConsoleCommand(new ReloadStressTestCommand());
                 CommandManager.Instance.AddConsoleCommand(new SpawnTestSubjectCommand());
                 CommandManager.Instance.AddConsoleCommand(new CleanupTestSubjectsCommand());
                 CommandManager.Instance.AddConsoleCommand(new BetaReportCommand());
-                CreaturePrefabCreatorPlugin.Instance?.Log("[CpcBeta] Beta command suite registered.");
+                CreaturePrefabCreatorPlugin.Instance?.Log("[CpcBeta] Beta command suite registered (mount trace + reload stress test included).");
             }
             catch (Exception ex)
             {
@@ -182,8 +188,8 @@ namespace CreaturePrefabCreator.Debug
                 MaxHealth = maxHealth,
                 Level = ch.GetLevel(),
                 Tamed = ch.IsTamed(),
-                Saddled = SaddledCreaturePatch.IsSaddledViaCanonicalPath(ch),
-                Ridden = SaddledCreaturePatch.IsActivelyRidden(ch),
+                Saddled = MountStateDetector.IsSaddled(ch),
+                Ridden = MountStateDetector.IsRidden(ch),
                 BaseAIExists = baseAI != null,
                 BaseAIEnabled = baseAI?.enabled ?? false,
                 MonsterAIExists = monsterAI != null,
@@ -607,8 +613,9 @@ namespace CreaturePrefabCreator.Debug
                 // 6. Compat flags
                 if (mountup && target != null)
                 {
-                    Log($"[cpc_beta_validate] MountUp compat: detected={SaddledCreaturePatch.MountUpDetected} typeResolved={SaddledCreaturePatch.MountUpTypeResolved}");
-                    Log($"  canonicalSaddled={SaddledCreaturePatch.IsSaddledViaCanonicalPath(target)} canonicalRidden={SaddledCreaturePatch.IsActivelyRidden(target)}");
+                    var mountSnapshot = MountStateDetector.GetMountState(target);
+                    Log($"[cpc_beta_validate] MountUp compat: detected={mountSnapshot.MountUpDetected} mountableFound={mountSnapshot.MountUpMountableFound}");
+                    Log($"  canonicalSaddled={mountSnapshot.FinalSaddled} canonicalRidden={mountSnapshot.FinalRidden} (reason: {mountSnapshot.FinalReason})");
                 }
                 if (allTame && target != null)
                 {
@@ -786,9 +793,10 @@ namespace CreaturePrefabCreator.Debug
                 if (ch == null) { Log($"[cpc_check_saddled] {err}"); return; }
 
                 string prefabName = NormalizeName(ch.gameObject.name);
-                bool saddled = SaddledCreaturePatch.IsSaddledViaCanonicalPath(ch);
-                bool ridden  = SaddledCreaturePatch.IsActivelyRidden(ch);
-                bool tamed   = ch.IsTamed();
+                var mountSnapshot = MountStateDetector.GetMountState(ch);
+                bool saddled = mountSnapshot.FinalSaddled;
+                bool ridden = mountSnapshot.FinalRidden;
+                bool tamed = ch.IsTamed();
 
                 Log($"[cpc_check_saddled] {prefabName}");
                 Log($"  tamed={tamed}  saddled={saddled}  ridden={ridden}");
@@ -1021,6 +1029,352 @@ namespace CreaturePrefabCreator.Debug
                                   validation.InvalidMultiplierRanges.Count + validation.MissingPrefabs.Count;
                 Log($"[cpc_beta_report] Done. {totalIssues} config issue(s). {recentEvents.Count} recent events. {nearby.Count} nearby creatures.");
             }
+        }
+
+        // ── cpc_mount_trace ───────────────────────────────────────────────────
+
+        private class MountTraceCommand : ConsoleCommand
+        {
+            public override string Name => "cpc_mount_trace";
+            public override string Help => "Detailed mount/saddle trace for target creature. Usage: cpc_mount_trace [--json] [prefabName]";
+
+            public override void Run(string[] args)
+            {
+                var p = CpcCommandRouter.Parse(args);
+                bool writeJson = p.HasFlag("--json");
+                string prefabHint = p.Positional.Count > 0 ? p.Positional[0] : null;
+
+                string err;
+                Character target = ResolveTarget(prefabHint, out err);
+                if (target == null)
+                {
+                    Log($"[cpc_mount_trace] {err}");
+                    return;
+                }
+
+                var snapshot = MountStateDetector.GetMountState(target);
+                var trace = MountStateDetector.GetMountTrace(target);
+
+                // Print human-readable trace
+                Log("==================================================");
+                Log($"MOUNT TRACE: {snapshot.ObjectName}");
+                Log("==================================================");
+                Log($"  Prefab: {snapshot.PrefabName}");
+                Log($"  Has Tameable: {snapshot.HasTameable}");
+                Log($"  Tameable.HaveSaddle(): resolved={snapshot.TameableHaveSaddleResolved}, result={snapshot.TameableHaveSaddleResult}");
+                Log($"  Has Sadle Component: {snapshot.HasSadleComponent}");
+                Log($"  Sadle.HaveValidUser(): resolved={snapshot.SadleHaveValidUserResolved}, result={snapshot.SadleHaveValidUserResult}");
+                Log($"  MountUp Detected: {snapshot.MountUpDetected}");
+                Log($"  MountUp Mountable Found: {snapshot.MountUpMountableFound}");
+                Log($"  MountUp getSaddle() returned object: {snapshot.MountUpGetSaddleReturnedObject}");
+                Log($"  MountUp saddle activeSelf: {snapshot.MountUpSaddleObjectActiveSelf}");
+                Log($"  MountUp saddle activeInHierarchy: {snapshot.MountUpSaddleObjectActiveInHierarchy}");
+                Log($"  MountUp GetRider() resolved: {snapshot.MountUpGetRiderResolved}");
+                Log($"  MountUp rider present: {snapshot.MountUpRiderPresent}");
+                Log($"  Inventory fallback used: {snapshot.InventoryFallbackUsed}");
+                Log($"  Inventory fallback result: {snapshot.InventoryFallbackResult}");
+                Log("--------------------------------------------------");
+                Log($"  FINAL: Saddled={snapshot.FinalSaddled}, Ridden={snapshot.FinalRidden}");
+                Log($"  Reason: {snapshot.FinalReason}");
+                if (!string.IsNullOrEmpty(trace.Warning))
+                    Log($"  WARNING: {trace.Warning}");
+                Log("==================================================");
+
+                if (writeJson)
+                {
+                    var json = new StringBuilder();
+                    json.AppendLine("{");
+                    json.AppendLine($"  \"timestamp\": \"{DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ}\",");
+                    json.AppendLine($"  \"prefabName\": \"{Esc(snapshot.PrefabName)}\",");
+                    json.AppendLine($"  \"objectName\": \"{Esc(snapshot.ObjectName)}\",");
+                    json.AppendLine($"  \"hasTameable\": {BoolStr(snapshot.HasTameable)},");
+                    json.AppendLine($"  \"tameableHaveSaddleResolved\": {BoolStr(snapshot.TameableHaveSaddleResolved)},");
+                    json.AppendLine($"  \"tameableHaveSaddleResult\": {BoolStr(snapshot.TameableHaveSaddleResult)},");
+                    json.AppendLine($"  \"hasSadleComponent\": {BoolStr(snapshot.HasSadleComponent)},");
+                    json.AppendLine($"  \"sadleHaveValidUserResolved\": {BoolStr(snapshot.SadleHaveValidUserResolved)},");
+                    json.AppendLine($"  \"sadleHaveValidUserResult\": {BoolStr(snapshot.SadleHaveValidUserResult)},");
+                    json.AppendLine($"  \"mountUpDetected\": {BoolStr(snapshot.MountUpDetected)},");
+                    json.AppendLine($"  \"mountUpMountableFound\": {BoolStr(snapshot.MountUpMountableFound)},");
+                    json.AppendLine($"  \"mountUpGetSaddleReturnedObject\": {BoolStr(snapshot.MountUpGetSaddleReturnedObject)},");
+                    json.AppendLine($"  \"mountUpSaddleObjectActiveSelf\": {BoolStr(snapshot.MountUpSaddleObjectActiveSelf)},");
+                    json.AppendLine($"  \"mountUpSaddleObjectActiveInHierarchy\": {BoolStr(snapshot.MountUpSaddleObjectActiveInHierarchy)},");
+                    json.AppendLine($"  \"mountUpGetRiderResolved\": {BoolStr(snapshot.MountUpGetRiderResolved)},");
+                    json.AppendLine($"  \"mountUpRiderPresent\": {BoolStr(snapshot.MountUpRiderPresent)},");
+                    json.AppendLine($"  \"inventoryFallbackUsed\": {BoolStr(snapshot.InventoryFallbackUsed)},");
+                    json.AppendLine($"  \"inventoryFallbackResult\": {BoolStr(snapshot.InventoryFallbackResult)},");
+                    json.AppendLine($"  \"finalSaddled\": {BoolStr(snapshot.FinalSaddled)},");
+                    json.AppendLine($"  \"finalRidden\": {BoolStr(snapshot.FinalRidden)},");
+                    json.AppendLine($"  \"finalReason\": \"{Esc(snapshot.FinalReason)}\"");
+                    if (!string.IsNullOrEmpty(trace.Warning))
+                        json.AppendLine($",");
+                        json.AppendLine($"  \"warning\": \"{Esc(trace.Warning)}\"");
+                    json.AppendLine("}");
+
+                    WriteJsonFile("mount-trace", json.ToString());
+                }
+            }
+        }
+
+        // ── cpc_reload_stress_test ────────────────────────────────────────────
+
+        private class ReloadStressTestCommand : ConsoleCommand
+        {
+            public override string Name => "cpc_reload_stress_test";
+            public override string Help => "Stress test config reload stability. Usage: cpc_reload_stress_test [prefabName] [count] [--json]";
+
+            public override void Run(string[] args)
+            {
+                var p = CpcCommandRouter.Parse(args);
+                bool writeJson = p.HasFlag("--json");
+
+                // Parse arguments - can be: [prefabName] [count] or just [count] or nothing
+                int count = 5;
+                string targetPrefab = null;
+
+                foreach (var arg in p.Positional)
+                {
+                    if (int.TryParse(arg, out int parsed))
+                        count = parsed;
+                    else
+                        targetPrefab = arg;
+                }
+
+                count = Mathf.Clamp(count, 1, 20); // Cap at 20 to prevent excessive reloads
+
+                Log($"[cpc_reload_stress_test] Starting stress test: {count} reloads...");
+                if (!string.IsNullOrEmpty(targetPrefab))
+                    Log($"[cpc_reload_stress_test] Monitoring prefab: {targetPrefab}");
+
+                var plugin = CreaturePrefabCreatorPlugin.Instance;
+                if (plugin?.LoadedConfig == null)
+                {
+                    Log("[cpc_reload_stress_test] No config loaded.");
+                    return;
+                }
+
+                var results = new List<ReloadIterationResult>();
+                bool overallPass = true;
+
+                // Capture baseline state before any reloads
+                var baseline = CaptureStateSnapshot(targetPrefab);
+                Log($"[cpc_reload_stress_test] Baseline captured: {PrefabBaselineCache.CapturedCount} prefabs with baselines");
+
+                // Run reload iterations
+                for (int i = 0; i < count; i++)
+                {
+                    Log($"[cpc_reload_stress_test] Reload {i + 1}/{count}...");
+
+                    // Perform reload (same code path as cpc_reload_config)
+                    var newConfig = CreaturePrefabCreatorConfigLoader.LoadAll(plugin);
+
+                    // Clear and re-apply
+                    PrefabOverrideManager.ClearAll();
+                    GeneratedPrefabManager.ClearAll();
+
+                    GeneratedPrefabManager.CaptureOriginalSourceScales(newConfig.GeneratedPrefabs);
+                    PrefabOverrideManager.ReapplyAll(newConfig.PrefabOverrides, plugin.ConfigEnableFactionOverrides.Value);
+                    GeneratedPrefabManager.ReregisterAll(newConfig.GeneratedPrefabs, plugin.ConfigEnableFactionOverrides.Value);
+
+                    if (plugin.ConfigEnableRuntimeModifiers.Value)
+                    {
+                        RuntimeModifierManager.ClearAll();
+                        RuntimeModifierManager.Initialize(newConfig.RuntimeModifiers);
+                    }
+
+                    plugin.LoadedConfig = newConfig;
+
+                    // Capture state after this reload
+                    var afterState = CaptureStateSnapshot(targetPrefab);
+
+                    // Compare to baseline
+                    var iterationResult = CompareToBaseline(baseline, afterState, targetPrefab, i + 1);
+                    results.Add(iterationResult);
+
+                    if (!iterationResult.Passed)
+                        overallPass = false;
+
+                    // Log immediate feedback
+                    if (iterationResult.ScaleDriftDetected)
+                        Log($"[cpc_reload_stress_test] RELOAD {i + 1}: SCALE DRIFT DETECTED!");
+                }
+
+                // Final summary
+                Log("==================================================");
+                Log("RELOAD STRESS TEST COMPLETE");
+                Log("==================================================");
+                Log($"  Iterations: {count}");
+                Log($"  Overall: {(overallPass ? "PASS" : "FAIL")}");
+
+                foreach (var r in results)
+                {
+                    string status = r.Passed ? "PASS" : "FAIL";
+                    string details = "";
+                    if (r.ScaleDriftDetected)
+                        details += " [SCALE DRIFT]";
+                    if (r.DuplicatePrefabsDetected)
+                        details += " [DUPLICATES]";
+                    Log($"  Reload {r.Iteration}: {status}{details}");
+                }
+
+                // Check target prefab specifically
+                if (!string.IsNullOrEmpty(targetPrefab))
+                {
+                    var finalState = CaptureStateSnapshot(targetPrefab);
+                    if (finalState.TargetPrefabScale.HasValue)
+                    {
+                        var originalScale = PrefabBaselineCache.GetOriginalScale(targetPrefab);
+                        bool scaleStable = Vector3.Distance(finalState.TargetPrefabScale.Value, originalScale * GetExpectedScaleMultiplier(targetPrefab)) < 0.001f;
+                        Log($"  Target '{targetPrefab}' scale stable: {scaleStable}");
+                    }
+                }
+
+                Log("==================================================");
+
+                if (writeJson)
+                {
+                    var json = new StringBuilder();
+                    json.AppendLine("{");
+                    json.AppendLine($"  \"timestamp\": \"{DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ}\",");
+                    json.AppendLine($"  \"testType\": \"reload_stress_test\",");
+                    json.AppendLine($"  \"iterationCount\": {count},");
+                    json.AppendLine($"  \"targetPrefab\": \"{Esc(targetPrefab)}\",");
+                    json.AppendLine($"  \"overallResult\": \"{(overallPass ? "PASS" : "FAIL")}\",");
+                    json.AppendLine($"  \"prefabBaselineCount\": {PrefabBaselineCache.CapturedCount},");
+                    json.AppendLine("  \"iterations\": [");
+                    for (int i = 0; i < results.Count; i++)
+                    {
+                        var r = results[i];
+                        json.AppendLine("    {");
+                        json.AppendLine($"      \"iteration\": {r.Iteration},");
+                        json.AppendLine($"      \"result\": \"{(r.Passed ? "PASS" : "FAIL")}\",");
+                        json.AppendLine($"      \"scaleDrift\": {BoolStr(r.ScaleDriftDetected)},");
+                        json.AppendLine($"      \"duplicatePrefabs\": {BoolStr(r.DuplicatePrefabsDetected)},");
+                        json.AppendLine($"      \"generatedPrefabCount\": {r.GeneratedPrefabCount}");
+                        json.Append("    }");
+                        json.AppendLine(i < results.Count - 1 ? "," : "");
+                    }
+                    json.AppendLine("  ],");
+
+                    // Add baseline snapshot
+                    json.AppendLine("  \"baselineSnapshot\": {");
+                    var baselines = PrefabBaselineCache.GetBaselineSnapshot();
+                    int b = 0;
+                    foreach (var kvp in baselines)
+                    {
+                        b++;
+                        json.AppendLine($"    \"{Esc(kvp.Key)}\": {{\"x\": {kvp.Value.x:F6}, \"y\": {kvp.Value.y:F6}, \"z\": {kvp.Value.z:F6}}}{(b < baselines.Count ? "," : "")}");
+                    }
+                    json.AppendLine("  }");
+                    json.AppendLine("}");
+
+                    WriteJsonFile("reload-stress-test", json.ToString());
+                }
+
+                Log("[cpc_reload_stress_test] Done.");
+            }
+
+            private StateSnapshot CaptureStateSnapshot(string targetPrefabName)
+            {
+                var snapshot = new StateSnapshot
+                {
+                    GeneratedPrefabCount = GetGeneratedPrefabCount(),
+                    RuntimeModifierRuleCount = RuntimeModifierManager.GetRuntimeStatus().TotalRules
+                };
+
+                if (!string.IsNullOrEmpty(targetPrefabName) && ZNetScene.instance != null)
+                {
+                    var prefab = ZNetScene.instance.GetPrefab(targetPrefabName);
+                    if (prefab != null)
+                        snapshot.TargetPrefabScale = prefab.transform.localScale;
+                }
+
+                return snapshot;
+            }
+
+            private int GetGeneratedPrefabCount()
+            {
+                var configs = CreaturePrefabCreatorPlugin.Instance?.LoadedConfig?.GeneratedPrefabs;
+                if (configs == null) return 0;
+
+                int count = 0;
+                foreach (var cfg in configs)
+                {
+                    if (cfg.Enabled && ZNetScene.instance?.GetPrefab(cfg.NewPrefab) != null)
+                        count++;
+                }
+                return count;
+            }
+
+            private float GetExpectedScaleMultiplier(string prefabName)
+            {
+                // Check for direct override
+                var direct = PrefabOverrideManager.GetDirectOverrideScale(prefabName);
+                if (direct.HasValue) return direct.Value;
+
+                // Check for generated prefab config
+                var configs = CreaturePrefabCreatorPlugin.Instance?.LoadedConfig?.GeneratedPrefabs;
+                if (configs != null)
+                {
+                    foreach (var cfg in configs)
+                    {
+                        if (cfg.Enabled && cfg.NewPrefab == prefabName)
+                        {
+                            // For generated prefabs, the effective multiplier combines with the base scale
+                            // but we want the total scale multiplier relative to original source
+                            float inherited = GeneratedPrefabManager.GetInheritedMultiplier(cfg.SourcePrefab);
+                            return cfg.Scale * inherited;
+                        }
+                    }
+                }
+
+                return 1f;
+            }
+
+            private ReloadIterationResult CompareToBaseline(StateSnapshot baseline, StateSnapshot current, string targetPrefab, int iteration)
+            {
+                var result = new ReloadIterationResult { Iteration = iteration, Passed = true };
+
+                // Check for duplicate prefab registrations
+                int expectedCount = CreaturePrefabCreatorPlugin.Instance?.LoadedConfig?.GeneratedPrefabs?.Count(c => c.Enabled) ?? 0;
+                if (current.GeneratedPrefabCount != expectedCount)
+                {
+                    result.DuplicatePrefabsDetected = true;
+                    result.Passed = false;
+                }
+
+                // Check for scale drift on target prefab
+                if (!string.IsNullOrEmpty(targetPrefab) && baseline.TargetPrefabScale.HasValue && current.TargetPrefabScale.HasValue)
+                {
+                    var originalScale = PrefabBaselineCache.GetOriginalScale(targetPrefab);
+                    float expectedMultiplier = GetExpectedScaleMultiplier(targetPrefab);
+                    Vector3 expectedScale = originalScale * expectedMultiplier;
+
+                    if (Vector3.Distance(current.TargetPrefabScale.Value, expectedScale) > 0.001f)
+                    {
+                        result.ScaleDriftDetected = true;
+                        result.Passed = false;
+                    }
+                }
+
+                result.GeneratedPrefabCount = current.GeneratedPrefabCount;
+                return result;
+            }
+        }
+
+        private class StateSnapshot
+        {
+            public int GeneratedPrefabCount;
+            public int RuntimeModifierRuleCount;
+            public Vector3? TargetPrefabScale;
+        }
+
+        private class ReloadIterationResult
+        {
+            public int Iteration;
+            public bool Passed;
+            public bool ScaleDriftDetected;
+            public bool DuplicatePrefabsDetected;
+            public int GeneratedPrefabCount;
         }
     }
 }

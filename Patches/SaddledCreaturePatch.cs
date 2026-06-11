@@ -419,7 +419,9 @@ namespace CreaturePrefabCreator.Patches
             }
 
             // 3. MountUpRestored: check via Mountable -> getSaddle/getSadle
-            // Some MountUp creatures may not expose vanilla Tameable.m_saddle
+            // Mountable.getSaddle() returns a saddle GameObject created during Awake. It is set
+            // INACTIVE by Tameable.SetSaddle until a saddle item is actually equipped by the player.
+            // Check activeSelf — if false, the saddle slot exists but no saddle is currently equipped.
             if (_mountUpMountableType != null && _mountUpGetSaddleMethod != null)
             {
                 var mountable = character.GetComponent(_mountUpMountableType);
@@ -428,9 +430,9 @@ namespace CreaturePrefabCreator.Patches
                     try
                     {
                         object saddleObj = _mountUpGetSaddleMethod.Invoke(mountable, null);
-                        if (saddleObj is GameObject saddleGO && saddleGO != null)
+                        if (saddleObj is GameObject saddleGO && saddleGO != null && saddleGO.activeSelf)
                         {
-                            if (debug) CreaturePrefabCreatorPlugin.Instance.Log($"[IsSaddled] {character.name}: true (MountUp via {_mountUpGetSaddleMethodName})");
+                            if (debug) CreaturePrefabCreatorPlugin.Instance.Log($"[IsSaddled] {character.name}: true (MountUp via {_mountUpGetSaddleMethodName}, saddle active)");
                             return true;
                         }
                     }

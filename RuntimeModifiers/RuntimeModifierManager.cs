@@ -543,9 +543,10 @@ namespace CreaturePrefabCreator.RuntimeModifiers
 
             if (!hasPermanentMarker)
             {
-                // anyDisableAIRule is already false when ridden=false condition failed,
-                // so no need to re-query IsActivelyRidden (avoids TOCTOU race).
-                bool wantsDisableAI = anyDisableAIRule;
+                // CRITICAL FIX: anyDisableAIRule is NOT already filtered by ridden state
+                // We must explicitly check ridden state to avoid disabling AI while mounted
+                bool isCurrentlyRidden = IsRidden(character);
+                bool wantsDisableAI = anyDisableAIRule && !isCurrentlyRidden;
 
                 if (wantsDisableAI && !currentlyDisabled)
                 {

@@ -1,6 +1,7 @@
 using BepInEx;
 using BepInEx.Configuration;
 using CreaturePrefabCreator.Config;
+using CreaturePrefabCreator.Detection;
 using CreaturePrefabCreator.GeneratedPrefabs;
 using CreaturePrefabCreator.Overrides;
 using CreaturePrefabCreator.Patches;
@@ -75,11 +76,9 @@ namespace CreaturePrefabCreator
                 return;
             }
 
-            // Initialize saddle/rider reflection caches for RuntimeModifiers
-            if (ConfigEnableRuntimeModifiers.Value)
-            {
-                SaddledCreaturePatch.Initialize();
-            }
+            // Initialize saddle/rider reflection caches for RuntimeModifiers and MountStateDetector
+            SaddledCreaturePatch.Initialize();
+            MountStateDetector.Initialize();
 
             // P0: Log warnings for any enabled beta features
             LogBetaWarnings();
@@ -163,6 +162,12 @@ namespace CreaturePrefabCreator
                 Log("Registering prefabs from local config. Dedicated servers and clients must use matching creaturePrefabCreator.json files.");
 
                 // P0: Gate features based on safety config
+                // Capture original source scales BEFORE override pass mutates ZNetScene prefabs
+                if (ConfigEnableGeneratedPrefabs.Value)
+                {
+                    GeneratedPrefabManager.CaptureOriginalSourceScales(LoadedConfig.GeneratedPrefabs);
+                }
+
                 if (ConfigEnablePrefabOverrides.Value)
                 {
                     PrefabOverrideManager.ApplyAll(LoadedConfig.PrefabOverrides, ConfigEnableFactionOverrides.Value);

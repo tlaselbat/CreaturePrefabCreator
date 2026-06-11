@@ -1,5 +1,6 @@
 using CreaturePrefabCreator.Config;
 using CreaturePrefabCreator.Config.Advanced;
+using CreaturePrefabCreator.Core;
 using CreaturePrefabCreator.Overrides;
 using CreaturePrefabCreator.Patches;
 using CreaturePrefabCreator.Utilities;
@@ -24,9 +25,6 @@ namespace CreaturePrefabCreator.GeneratedPrefabs
         // Maps sourcePrefab name → inherited health/damage multipliers from an adult override
         private static readonly Dictionary<string, float> InheritedHealthMultipliers = new Dictionary<string, float>();
         private static readonly Dictionary<string, float> InheritedDamageMultipliers = new Dictionary<string, float>();
-
-        // Maps source prefab name → vanilla localScale captured before any override is applied
-        private static readonly Dictionary<string, Vector3> OriginalPrefabScales = new Dictionary<string, Vector3>();
 
         /// <summary>
         /// Called by PrefabOverrideManager after applying an override with propagateToGeneratedVariants=true.
@@ -70,6 +68,9 @@ namespace CreaturePrefabCreator.GeneratedPrefabs
         // Maps sourcePrefab name → inherited faction from an adult override
         private static readonly Dictionary<string, string> InheritedFactions = new Dictionary<string, string>();
 
+        // NOTE: OriginalPrefabScales removed - now using centralized PrefabBaselineCache
+        // This ensures all source prefab baselines are captured consistently
+
         /// <summary>
         /// Called by PrefabOverrideManager after applying an override with propagateToGeneratedVariants=true.
         /// Stores the faction override for generated variants of the source prefab.
@@ -93,19 +94,24 @@ namespace CreaturePrefabCreator.GeneratedPrefabs
             return value >= 0.01f && value <= 100f;
         }
 
+        /// <summary>
+        /// Clears all cached state. Call on world unload or config reload.
+        /// NOTE: Does NOT clear original baselines - those are managed by PrefabBaselineCache
+        /// and must persist across reloads to prevent scale compounding.
+        /// </summary>
         public static void ClearAll()
         {
             RegisteredPrefabs.Clear();
             InheritedMultipliers.Clear();
             InheritedHealthMultipliers.Clear();
             InheritedDamageMultipliers.Clear();
-            OriginalPrefabScales.Clear();
+            // CRITICAL: Do NOT clear PrefabBaselineCache here - baselines must persist
             InheritedFactions.Clear();
         }
 
         /// <summary>
-        /// Snapshots the current localScale of each source prefab referenced by the given generated
-        /// prefab configs, capturing the vanilla (pre-override) scale.
+        /// Captures the original localScale of each source prefab referenced by the given generated
+        /// prefab configs using the centralized PrefabBaselineCache.
         /// MUST be called BEFORE PrefabOverrideManager.ReapplyAll/ApplyAll so the scale stored is
         /// the true original and not a value already multiplied by a previous override pass.
         /// </summary>
@@ -115,18 +121,24 @@ namespace CreaturePrefabCreator.GeneratedPrefabs
             foreach (var cfg in configs)
             {
                 if (!cfg.Enabled || string.IsNullOrEmpty(cfg.SourcePrefab)) continue;
-                if (OriginalPrefabScales.ContainsKey(cfg.SourcePrefab)) continue;
+
+                // Use centralized cache - it handles "already captured" check internally
                 var prefab = FindSourcePrefab(cfg.SourcePrefab);
                 if (prefab == null) continue;
-                OriginalPrefabScales[cfg.SourcePrefab] = prefab.transform.localScale;
-                CreaturePrefabCreatorPlugin.Instance?.Log(
-                    $"[ScaleCapture] '{cfg.SourcePrefab}': captured originalSourceScale={prefab.transform.localScale} before override pass.");
+
+                bool captured = PrefabBaselineCache.CaptureOriginalScale(cfg.SourcePrefab, prefab);
+                if (captured)
+                {
+                    CreaturePrefabCreatorPlugin.Instance?.Log(
+                        $"[ScaleCapture] '{cfg.SourcePrefab}': captured originalSourceScale={prefab.transform.localScale} before override pass.");
+                }
             }
         }
 
         /// <summary>
         /// P2: Re-register all generated prefabs from a fresh config list.
         /// Used by runtime config reload. Existing spawned instances still reference old templates.
+        /// CRITICAL: Baselines are managed by PrefabBaselineCache and persist across reloads.
         /// </summary>
         public static void ReregisterAll(List<GeneratedPrefabConfig> configs, bool factionOverridesEnabled = false)
         {
@@ -135,9 +147,10 @@ namespace CreaturePrefabCreator.GeneratedPrefabs
             InheritedMultipliers.Clear();
             InheritedHealthMultipliers.Clear();
             InheritedDamageMultipliers.Clear();
-            // OriginalPrefabScales is intentionally NOT cleared here.
-            // It was populated by CaptureOriginalSourceScales() before PrefabOverrideManager.ReapplyAll()
-            // mutated the source prefabs. Clearing it here would cause scale compounding on each reload.
+            // CRITICAL: PrefabBaselineCache baselines are NEVER cleared during reload.
+            // They were captured from clean vanilla prefabs during initial boot.
+            // Clearing them would cause recapture of already-mutated source prefabs,
+            // leading to scale compounding on every cpc_reload_config invocation.
             InheritedFactions.Clear();
 
             GenerateAll(configs, factionOverridesEnabled);
@@ -378,12 +391,21 @@ namespace CreaturePrefabCreator.GeneratedPrefabs
             }
 
             // 7. Apply scale: originalSourceScale × baseScale × effectiveMultiplier
-            //    originalSourceScale: vanilla scale of the source prefab, captured before any override
+            //    originalSourceScale: vanilla scale of the source prefab, from PrefabBaselineCache
             //    config.Scale:        base scale from the generated config (e.g. 0.4 for a pup)
             //    effectiveMultiplier: direct override for this new prefab if one exists, else inherited from source override
-            if (!OriginalPrefabScales.ContainsKey(config.SourcePrefab))
-                OriginalPrefabScales[config.SourcePrefab] = sourcePrefab.transform.localScale;
-            Vector3 originalSourceScale = OriginalPrefabScales[config.SourcePrefab];
+            // CRITICAL: Use PrefabBaselineCache to get source scale, never read from already-mutated source prefab
+            Vector3 originalSourceScale = PrefabBaselineCache.GetOriginalScale(config.SourcePrefab);
+            // If baseline wasn't captured yet (safety net), capture and warn
+            if (!PrefabBaselineCache.HasOriginalScale(config.SourcePrefab))
+            {
+                PrefabBaselineCache.CaptureOriginalScale(config.SourcePrefab, sourcePrefab);
+                originalSourceScale = PrefabBaselineCache.GetOriginalScale(config.SourcePrefab);
+                CreaturePrefabCreatorPlugin.Instance?.LogWarning(
+                    $"[GeneratedPrefabManager] Late baseline capture for source '{config.SourcePrefab}' - " +
+                    "this should have been captured during boot. Verify PrefabBaselineCache is initialized before generation."
+                );
+            }
 
             float? directOverride = PrefabOverrideManager.GetDirectOverrideScale(config.NewPrefab);
             float inheritedMultiplier = GetInheritedMultiplier(config.SourcePrefab);
